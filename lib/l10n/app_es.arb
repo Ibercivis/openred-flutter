@@ -1,0 +1,205 @@
+{
+  "@@locale": "es",
+  "appTitle": "Open-red",
+
+  "navTracks": "Tracks",
+  "navMap": "Mapa",
+  "navDevice": "Dispositivo",
+  "navProfile": "Perfil",
+  "navAbout": "Acerca de",
+
+  "language": "Idioma",
+  "languageSystem": "Sistema",
+  "languageEnglish": "Inglés",
+  "languageSpanish": "Español",
+
+  "todayAt": "Hoy, {time}",
+  "yesterdayAt": "Ayer, {time}",
+
+  "login": "Iniciar sesión",
+  "logout": "Cerrar sesión",
+  "retry": "Reintentar",
+  "cancel": "Cancelar",
+  "delete": "Eliminar",
+  "upload": "Subir",
+
+  "tracksLoginToSync": "Inicia sesión para sincronizar y descargar tracks de la nube",
+  "tracksNeedLoginToView": "Necesitas iniciar sesión para ver tus tracks.",
+  "tracksNoTracksYet": "Aún no hay tracks",
+  "tracksNoTracksSubtitle": "Graba un track o inicia sesión para descargar tracks de la nube.",
+  "tracksUnnamed": "Track sin nombre"
+
+  ,"tracksTooltipExportLocalJson": "Exportar JSON local"
+  ,"tracksTooltipRefresh": "Actualizar"
+  ,"tracksTooltipViewOnMap": "Ver en el mapa"
+
+  ,"tracksStatusPending": "Pendiente"
+  ,"tracksStatusSynced": "Sincronizado"
+  ,"tracksStatusLocalAndCloud": "Local + Nube"
+  ,"tracksStatusDownloading": "Descargando…"
+  ,"tracksStatusDownloadFailed": "Fallo al descargar"
+  ,"tracksStatusCloudOnly": "Solo nube"
+  ,"tracksStatusLocalOnly": "Solo local"
+
+  ,"tracksSummaryLine": "{when} • {distance} • {duration} • {points} pts"
+  ,"@tracksSummaryLine": {
+    "placeholders": {
+      "when": {"type": "String"},
+      "distance": {"type": "String"},
+      "duration": {"type": "String"},
+      "points": {"type": "String"}
+    }
+  }
+
+  ,"tracksDeleteLocalTitle": "¿Eliminar track local?"
+  ,"tracksDeleteLocalBody": "\"{name}\" se eliminará de este dispositivo."
+  ,"@tracksDeleteLocalBody": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  }
+  ,"tracksDeleteCloudTitle": "¿Eliminar track de la nube?"
+  ,"tracksDeleteCloudBody": "\"{name}\" se eliminará de la nube."
+  ,"@tracksDeleteCloudBody": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  }
+
+  ,"tracksSnackLocalDeleted": "Track local eliminado."
+  ,"tracksSnackCloudDeleted": "Track eliminado de la nube."
+  ,"tracksSnackFileNotFound": "Archivo no encontrado."
+  ,"tracksSnackNoLocalJsonToExport": "No se encontraron archivos JSON locales para exportar."
+
+  ,"tracksErrorDeleteFailed": "Error al eliminar: {error}"
+  ,"@tracksErrorDeleteFailed": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  }
+  ,"tracksErrorExportFailed": "Error al exportar: {error}"
+  ,"@tracksErrorExportFailed": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  }
+  ,"tracksErrorDownloadFailed": "Error al descargar: {error}"
+  ,"@tracksErrorDownloadFailed": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  }
+  ,"tracksSnackCloudNoMeasurementsYet": "El track está {status} (aún no hay mediciones)."
+  ,"@tracksSnackCloudNoMeasurementsYet": {
+    "placeholders": {
+      "status": {"type": "String"}
+    }
+  }
+
+  ,"loginWelcomeBack": "Bienvenido/a"
+  ,"loginToYourAccount": "Inicia sesión en tu cuenta"
+  ,"email": "Email"
+  ,"password": "Contraseña"
+  ,"or": "o"
+  ,"continueWithGoogle": "Continuar con Google"
+  ,"dontHaveAccountRegister": "¿No tienes cuenta? Regístrate"
+
+  ,"validationEnterEmail": "Introduce tu email"
+  ,"validationEnterValidEmail": "Introduce un email válido"
+  ,"validationEnterPassword": "Introduce tu contraseña"
+  ,"validationPasswordMin": "La contraseña debe tener al menos {min} caracteres"
+
+  ,"snackLoginSuccessful": "¡Inicio de sesión correcto!"
+  ,"snackLoginFailed": "Error al iniciar sesión"
+  ,"snackGoogleCancelled": "Inicio de sesión con Google cancelado"
+  ,"snackGoogleNoAccessToken": "Google no devolvió un access token"
+  ,"snackGoogleLoginFailed": "Error al iniciar sesión con Google"
+  ,"snackGoogleNotSupported": "El inicio de sesión con Google no está disponible en esta plataforma"
+  ,"snackLoggedOut": "Sesión cerrada correctamente"
+
+  ,"na": "N/A"
+  ,"profileUserFallback": "Usuario"
+  ,"profileStatusActive": "Activo"
+  ,"profileStatusInactive": "Inactivo"
+  ,"profileUserIdLabel": "ID de usuario"
+  ,"profileUsernameLabel": "Usuario"
+  ,"profileMemberSinceLabel": "Miembro desde"
+
+  ,"deviceDisconnected": "Desconectado"
+  ,"deviceConnecting": "Conectando…"
+  ,"deviceSearchingRadiaCode": "Buscando dispositivos RadiaCode..."
+  ,"deviceNoRadiaCodeDevicesFound": "No se encontraron dispositivos RadiaCode\nPulsa el botón de escaneo para empezar"
+  ,"deviceUnknownDevice": "Dispositivo desconocido"
+  ,"deviceListId": "ID: {id}"
+  ,"@deviceListId": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  }
+  ,"deviceListRssi": "RSSI: {rssi} dBm"
+  ,"@deviceListRssi": {
+    "placeholders": {
+      "rssi": {
+        "type": "int"
+      }
+    }
+  }
+  ,"deviceConnect": "Conectar"
+  ,"deviceStartScan": "Iniciar escaneo"
+  ,"deviceStopScan": "Detener escaneo"
+
+  ,"deviceDisconnect": "Desconectar"
+  ,"deviceDisconnecting": "Desconectando…"
+  ,"deviceDisconnectDialogTitle": "¿Desconectar dispositivo?"
+  ,"deviceDisconnectDialogBody": "Esto detendrá las lecturas en vivo y cerrará la conexión Bluetooth."
+  ,"deviceMuteGeiger": "Silenciar Geiger"
+  ,"deviceUnmuteGeiger": "Activar Geiger"
+
+  ,"deviceMetricCps": "CPS"
+  ,"deviceMetricDoseRate": "Tasa de dosis"
+
+  ,"deviceGpsAccuracy": "Precisión GPS: {meters} m"
+  ,"@deviceGpsAccuracy": {
+    "placeholders": {
+      "meters": {
+        "type": "String"
+      }
+    }
+  }
+  ,"trackingNeedLogin": "Necesitas iniciar sesión para trackear"
+  ,"trackingHighPrecisionOk": "Precisión suficiente"
+  ,"trackingNeedAccuracyToRecord": "Necesitas ≤ {meters} m para grabar"
+  ,"@trackingNeedAccuracyToRecord": {
+    "placeholders": {
+      "meters": {
+        "type": "String"
+      }
+    }
+  }
+
+  ,"discard": "Descartar"
+  ,"save": "Guardar"
+  ,"pause": "Pausar"
+  ,"resume": "Reanudar"
+  ,"stop": "Detener"
+
+  ,"trackingStatusRecording": "Track • Grabando"
+  ,"trackingStatusPaused": "Track • En pausa"
+  ,"trackingTrack": "Trackear"
+
+  ,"deviceGettingHighAccuracyGpsFix": "Obteniendo posición GPS de alta precisión..."
+  ,"deviceSnackConnectedReady": "¡RadiaCode conectado y listo!"
+    ,"aboutBody": "Open-red es un proyecto surgido de un convenio entre el Consejo de Seguridad Nuclear y la Fundación Ibercivis. En él colaboran también la Universitat Politècnica de Catalunya, la Universidad de Zaragoza, la Universidad de Cantabria y el Centro de Investigaciones Energéticas, Medioambientales y Tecnológicas. Para más información, sigue los enlaces a continuación."
+    ,"aboutProjectWebpage": "Página web del proyecto"
+    ,"aboutProjectMap": "Mapa del proyecto"
+    ,"aboutCommunityTelegram": "Comunidad (Telegram)"
+    ,"aboutDevelopedBy": "Desarrollado por Ibercivis"
+    ,"aboutOpenUrlFailed": "No se pudo abrir: {url}"
+    ,"@aboutOpenUrlFailed": {
+      "placeholders": {
+        "url": {"type": "String"}
+      }
+    }
+}

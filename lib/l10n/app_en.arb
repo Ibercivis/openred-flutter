@@ -1,0 +1,206 @@
+{
+  "@@locale": "en",
+  "appTitle": "Open-red",
+
+  "navTracks": "Tracks",
+  "navMap": "Map",
+  "navDevice": "Device",
+  "navProfile": "Profile",
+  "navAbout": "About",
+
+  "language": "Language",
+  "languageSystem": "System",
+  "languageEnglish": "English",
+  "languageSpanish": "Spanish",
+
+  "todayAt": "Today, {time}",
+  "yesterdayAt": "Yesterday, {time}",
+
+  "login": "Login",
+  "logout": "Logout",
+  "retry": "Retry",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "upload": "Upload",
+
+  "tracksLoginToSync": "Login to sync and download cloud tracks",
+  "tracksNeedLoginToView": "You need to log in to view your tracks.",
+  "tracksNoTracksYet": "No tracks yet",
+  "tracksNoTracksSubtitle": "Record a track, or login to download cloud tracks.",
+  "tracksUnnamed": "Unnamed Track"
+
+  ,"tracksTooltipExportLocalJson": "Export local JSON"
+  ,"tracksTooltipRefresh": "Refresh"
+  ,"tracksTooltipViewOnMap": "View on map"
+
+  ,"tracksStatusPending": "Pending"
+  ,"tracksStatusSynced": "Synced"
+  ,"tracksStatusLocalAndCloud": "Local + Cloud"
+  ,"tracksStatusDownloading": "Downloading…"
+  ,"tracksStatusDownloadFailed": "Download failed"
+  ,"tracksStatusCloudOnly": "Cloud only"
+  ,"tracksStatusLocalOnly": "Local only"
+
+  ,"tracksSummaryLine": "{when} • {distance} • {duration} • {points} pts"
+  ,"@tracksSummaryLine": {
+    "placeholders": {
+      "when": {"type": "String"},
+      "distance": {"type": "String"},
+      "duration": {"type": "String"},
+      "points": {"type": "String"}
+    }
+  }
+
+  ,"tracksDeleteLocalTitle": "Delete local track?"
+  ,"tracksDeleteLocalBody": "\"{name}\" will be deleted from this device."
+  ,"@tracksDeleteLocalBody": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  }
+  ,"tracksDeleteCloudTitle": "Delete cloud track?"
+  ,"tracksDeleteCloudBody": "\"{name}\" will be deleted from the cloud."
+  ,"@tracksDeleteCloudBody": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  }
+
+  ,"tracksSnackLocalDeleted": "Local track deleted."
+  ,"tracksSnackCloudDeleted": "Cloud track deleted."
+  ,"tracksSnackFileNotFound": "File not found."
+  ,"tracksSnackNoLocalJsonToExport": "No local JSON files found to export."
+
+  ,"tracksErrorDeleteFailed": "Delete failed: {error}"
+  ,"@tracksErrorDeleteFailed": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  }
+  ,"tracksErrorExportFailed": "Export failed: {error}"
+  ,"@tracksErrorExportFailed": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  }
+  ,"tracksErrorDownloadFailed": "Download failed: {error}"
+  ,"@tracksErrorDownloadFailed": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  }
+  ,"tracksSnackCloudNoMeasurementsYet": "Track is {status} (no measurements yet)."
+  ,"@tracksSnackCloudNoMeasurementsYet": {
+    "placeholders": {
+      "status": {"type": "String"}
+    }
+  }
+
+  ,"loginWelcomeBack": "Welcome Back"
+  ,"loginToYourAccount": "Login to your account"
+  ,"email": "Email"
+  ,"password": "Password"
+  ,"or": "or"
+  ,"continueWithGoogle": "Continue with Google"
+  ,"dontHaveAccountRegister": "Don't have an account? Register"
+
+  ,"validationEnterEmail": "Please enter your email"
+  ,"validationEnterValidEmail": "Please enter a valid email"
+  ,"validationEnterPassword": "Please enter your password"
+  ,"validationPasswordMin": "Password must be at least {min} characters"
+
+  ,"snackLoginSuccessful": "Login successful!"
+  ,"snackLoginFailed": "Login failed"
+  ,"snackGoogleCancelled": "Google sign-in cancelled"
+  ,"snackGoogleNoAccessToken": "Google sign-in did not return an access token"
+  ,"snackGoogleLoginFailed": "Google login failed"
+  ,"snackGoogleNotSupported": "Google sign-in is not available on this platform"
+  ,"snackLoggedOut": "Logged out successfully"
+
+  ,"na": "N/A"
+  ,"profileUserFallback": "User"
+  ,"profileStatusActive": "Active"
+  ,"profileStatusInactive": "Inactive"
+  ,"profileUserIdLabel": "User ID"
+  ,"profileUsernameLabel": "Username"
+  ,"profileMemberSinceLabel": "Member Since"
+
+  ,"deviceDisconnected": "Disconnected"
+  ,"deviceConnecting": "Connecting…"
+  ,"deviceSearchingRadiaCode": "Searching for RadiaCode devices..."
+  ,"deviceNoRadiaCodeDevicesFound": "No RadiaCode devices found\nTap the scan button to start"
+  ,"deviceUnknownDevice": "Unknown device"
+  ,"deviceListId": "ID: {id}"
+  ,"@deviceListId": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  }
+  ,"deviceListRssi": "RSSI: {rssi} dBm"
+  ,"@deviceListRssi": {
+    "placeholders": {
+      "rssi": {
+        "type": "int"
+      }
+    }
+  }
+  ,"deviceConnect": "Connect"
+  ,"deviceStartScan": "Start Scan"
+  ,"deviceStopScan": "Stop Scan"
+
+  ,"deviceDisconnect": "Disconnect"
+  ,"deviceDisconnecting": "Disconnecting…"
+  ,"deviceDisconnectDialogTitle": "Disconnect device?"
+  ,"deviceDisconnectDialogBody": "This will stop live readings and end the Bluetooth connection."
+  ,"deviceMuteGeiger": "Mute Geiger"
+  ,"deviceUnmuteGeiger": "Unmute Geiger"
+
+  ,"deviceMetricCps": "CPS"
+  ,"deviceMetricDoseRate": "Dose Rate"
+
+  ,"deviceGpsAccuracy": "GPS Accuracy: {meters} m"
+  ,"@deviceGpsAccuracy": {
+    "placeholders": {
+      "meters": {
+        "type": "String"
+      }
+    }
+  }
+  ,"trackingNeedLogin": "You need to log in to track"
+  ,"trackingHighPrecisionOk": "High precision OK"
+  ,"trackingNeedAccuracyToRecord": "Need ≤ {meters} m to record"
+  ,"@trackingNeedAccuracyToRecord": {
+    "placeholders": {
+      "meters": {
+        "type": "String"
+      }
+    }
+  }
+
+  ,"discard": "Discard"
+  ,"save": "Save"
+  ,"pause": "Pause"
+  ,"resume": "Resume"
+  ,"stop": "Stop"
+
+  ,"trackingStatusRecording": "Track • Recording"
+  ,"trackingStatusPaused": "Track • Paused"
+  ,"trackingTrack": "Track"
+
+  ,"deviceGettingHighAccuracyGpsFix": "Getting high-accuracy GPS fix..."
+  ,"deviceSnackConnectedReady": "RadiaCode connected and ready!"
+
+  ,"aboutBody": "Open-red is a project arising from an agreement between the Consejo de Seguridad Nuclear and the Ibercivis Foundation. The project also involves the Universitat Politècnica de Catalunya, the University of Zaragoza, the University of Cantabria and the Centro de Investigaciones Energéticas, Medioambientales y Tecnológicas. For more information, follow the links below."
+  ,"aboutProjectWebpage": "Project webpage"
+  ,"aboutProjectMap": "Project map"
+  ,"aboutCommunityTelegram": "Community (Telegram)"
+  ,"aboutDevelopedBy": "Developed by Ibercivis"
+  ,"aboutOpenUrlFailed": "Could not open: {url}"
+  ,"@aboutOpenUrlFailed": {
+    "placeholders": {
+      "url": {"type": "String"}
+    }
+  }
+}
