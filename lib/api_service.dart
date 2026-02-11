@@ -55,17 +55,24 @@ class ApiService {
   /// Returns the stable backend user id for the currently logged-in user.
   /// Uses a cached value when possible; falls back to `getProfile()`.
   Future<int?> getCurrentUserId({bool refresh = false}) async {
+    print('[ApiService.getCurrentUserId] Starting (refresh: $refresh)');
+    
     if (!refresh) {
       final cached = await getStoredUserId();
+      print('[ApiService.getCurrentUserId] Cached user ID: $cached');
       if (cached != null) return cached;
     }
 
+    print('[ApiService.getCurrentUserId] Calling getProfile()...');
     final profile = await getProfile();
+    print('[ApiService.getCurrentUserId] getProfile result: $profile');
+    
     if (profile['success'] == true) {
       final user = profile['user'];
       if (user is Map) {
         final idRaw = user['id'] ?? user['pk'];
         final id = (idRaw is int) ? idRaw : int.tryParse(idRaw?.toString() ?? '');
+        print('[ApiService.getCurrentUserId] Extracted user ID: $id');
         if (id != null) {
           await saveUserId(id);
           return id;
@@ -73,6 +80,7 @@ class ApiService {
       }
     }
 
+    print('[ApiService.getCurrentUserId] Returning null');
     return null;
   }
 
@@ -169,7 +177,9 @@ class ApiService {
   // Check if user is logged in
   Future<bool> isLoggedIn() async {
     final token = await getToken();
-    return token != null && token.isNotEmpty;
+    final result = token != null && token.isNotEmpty;
+    print('ApiService.isLoggedIn() - token: ${token?.substring(0, 10)}..., result: $result');
+    return result;
   }
   
   // Login user

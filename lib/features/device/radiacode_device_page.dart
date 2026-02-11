@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart' as geo;
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_gauges/gauges.dart';
@@ -65,7 +66,7 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
   static const double _deviceMapDefaultZoom = 14.0;
   static const double _deviceMapNavPitch = 45.0;
 
-  static const double _requiredGpsAccuracyMeters = 10.0;
+  static const double _requiredGpsAccuracyMeters = 75.0;
   bool _isRecording = false;
   bool _isPaused = false;
   bool _autoPausedDueToGps = false;
@@ -303,15 +304,25 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
   }
 
   Future<void> _refreshTrackingAuth({bool force = false}) async {
-    if (_trackingAuthCheckInFlight) return;
+    print('[TrackingAuth] Starting _refreshTrackingAuth (force: $force)');
+    if (_trackingAuthCheckInFlight) {
+      print('[TrackingAuth] Check already in flight, returning');
+      return;
+    }
     _trackingAuthCheckInFlight = true;
 
     try {
       final token = await _apiService.getToken();
-      if (!force && token == _lastAuthTokenForTracking) return;
+      print('[TrackingAuth] Token retrieved: ${token != null ? "${token.substring(0, 10)}..." : "null"}');
+      
+      if (!force && token == _lastAuthTokenForTracking) {
+        print('[TrackingAuth] Token unchanged, returning');
+        return;
+      }
       _lastAuthTokenForTracking = token;
 
       if (token == null || token.isEmpty) {
+        print('[TrackingAuth] No token, setting _isLoggedInForTracking = false');
         if (mounted && _isLoggedInForTracking) {
           setState(() => _isLoggedInForTracking = false);
         } else {
@@ -320,15 +331,24 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
         return;
       }
 
+      print('[TrackingAuth] Calling getCurrentUserId...');
       final userId = await _apiService.getCurrentUserId();
+      print('[TrackingAuth] User ID received: $userId');
+      
       final ok = userId != null;
+      print('[TrackingAuth] Setting _isLoggedInForTracking = $ok');
+      
       if (mounted && ok != _isLoggedInForTracking) {
         setState(() => _isLoggedInForTracking = ok);
       } else {
         _isLoggedInForTracking = ok;
       }
+    } catch (e, st) {
+      print('[TrackingAuth] ERROR: $e');
+      print('[TrackingAuth] Stack trace: $st');
     } finally {
       _trackingAuthCheckInFlight = false;
+      print('[TrackingAuth] Finished _refreshTrackingAuth, _isLoggedInForTracking = $_isLoggedInForTracking');
     }
   }
 
@@ -449,7 +469,7 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
     return ok ?? false;
   }
 
-  Future<bool> _ensureHighAccuracyLocationReady() async {
+  Future<bool> _ensureHighAccuracyLocationReady({bool requireBackground = false}) async {
     final serviceEnabled = await geo.Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return false;
 
@@ -463,19 +483,57 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
       return false;
     }
 
+    if (requireBackground && Platform.isAndroid) {
+      if (permission == geo.LocationPermission.whileInUse) {
+        final requested = await geo.Geolocator.requestPermission();
+        permission = requested;
+      }
+
+      if (permission != geo.LocationPermission.always) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Activa "Permitir siempre" en ubicación para trackear en segundo plano.',
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        await geo.Geolocator.openAppSettings();
+        return false;
+      }
+    }
+
     return true;
   }
 
-  Future<void> _startLocationUpdates() async {
+  Future<void> _startLocationUpdates({bool skipPermissionCheck = false}) async {
     if (_positionSubscription != null) return;
 
-    final ok = await _ensureHighAccuracyLocationReady();
-    if (!ok) return;
+    if (!skipPermissionCheck) {
+      final ok = await _ensureHighAccuracyLocationReady();
+      if (!ok) return;
+    }
 
-    final settings = geo.LocationSettings(
-      accuracy: geo.LocationAccuracy.bestForNavigation,
-      distanceFilter: 0,
-    );
+    // Configuración específica para Android que evita que el GPS se suspenda
+    final settings = Platform.isAndroid
+        ? geo.AndroidSettings(
+            accuracy: geo.LocationAccuracy.bestForNavigation,
+            distanceFilter: 0,
+            forceLocationManager: true, // Evita suspensión en modo Doze
+            intervalDuration: const Duration(seconds: 5), // Fuerza actualizaciones cada 5s
+            // CRÍTICO: ForegroundNotificationConfig mantiene servicio GPS activo
+            foregroundNotificationConfig: const geo.ForegroundNotificationConfig(
+              notificationText: 'Tracking GPS activo',
+              notificationTitle: 'Open-red GPS',
+              enableWakeLock: true,
+            ),
+          )
+        : geo.LocationSettings(
+            accuracy: geo.LocationAccuracy.bestForNavigation,
+            distanceFilter: 0,
+          );
 
     _positionSubscription =
         geo.Geolocator.getPositionStream(locationSettings: settings).listen((pos) {
@@ -606,6 +664,27 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
     );
   }
 
+  Future<void> _repopulateMapTrackPoints() async {
+    final map = _deviceMap;
+    if (map == null || _recordedPoints.isEmpty) return;
+
+    // Resetear el manager
+    _deviceTrackPointManager = null;
+    _deviceTrackPointManager = await map.annotations.createCircleAnnotationManager();
+
+    // Repoblar todos los puntos guardados
+    for (final point in _recordedPoints) {
+      await _deviceTrackPointManager!.create(
+        CircleAnnotationOptions(
+          geometry: Point(coordinates: Position(point.longitude, point.latitude)),
+          circleRadius: 4.0,
+          circleColor: doseRateToArgb(point.doseMicroSvPerHour),
+          circleOpacity: 0.9,
+        ),
+      );
+    }
+  }
+
   bool _gpsIsPreciseEnough() {
     final acc = _currentPosition?.accuracy;
     if (acc == null) return false;
@@ -678,6 +757,9 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
       return;
     }
 
+    final backgroundReady = await _ensureHighAccuracyLocationReady(requireBackground: true);
+    if (!backgroundReady) return;
+
     if (!_gpsIsPreciseEnough()) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -701,7 +783,7 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
     }
 
     _deviceMapFollowUser = true;
-    unawaited(_startLocationUpdates());
+    unawaited(_startLocationUpdates(skipPermissionCheck: true));
 
     _recordedPoints.clear();
     _isRecording = true;
@@ -715,6 +797,11 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
 
     _startRecordingTimer();
     unawaited(_startRecordingForegroundService());
+    
+    // Mantener CPU activo para que el stream de GPS continue funcionando
+    if (Platform.isAndroid) {
+      WakelockPlus.enable();
+    }
 
     if (mounted) setState(() {});
   }
@@ -795,6 +882,12 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
     _recordingTimer = null;
 
     unawaited(_stopRecordingForegroundService());
+    
+    // Liberar wake lock
+    if (Platform.isAndroid) {
+      WakelockPlus.disable();
+    }
+    
     if (mounted) setState(() {});
   }
 
@@ -919,6 +1012,7 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
       final safeTrackName = _sanitizeFilenamePart(trackName);
       final file = File('${tracksDir.path}/track_${safeName}_$safeTrackName.json');
 
+      final deviceName = connectedDevice?.platformName;
       final payload = {
         'trackType': 'radiation',
         'name': trackName,
@@ -927,7 +1021,7 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
         'syncedAt': null,
         'cloudTrackId': null,
         'device': {
-          'name': connectedDevice?.platformName,
+          'name': (deviceName != null && deviceName.isNotEmpty) ? deviceName : 'Unknown Device',
           'id': connectedDevice?.remoteId.toString(),
         },
         'startedAt': startedAt.toUtc().toIso8601String(),
@@ -1652,6 +1746,10 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
                                           _deviceMap = mapboxMap;
                                           unawaited(_enableDeviceMapUserLocation());
                                           unawaited(_centerDeviceMapOnCurrentPosition());
+                                          // Repoblar puntos si estamos trackeando
+                                          if (_isRecording) {
+                                            unawaited(_repopulateMapTrackPoints());
+                                          }
                                         },
                                       );
                                     },
@@ -1689,6 +1787,10 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
                                           _deviceMap = mapboxMap;
                                           unawaited(_enableDeviceMapUserLocation());
                                           unawaited(_centerDeviceMapOnCurrentPosition());
+                                          // Repoblar puntos si estamos trackeando
+                                          if (_isRecording) {
+                                            unawaited(_repopulateMapTrackPoints());
+                                          }
                                         },
                                       );
                                     },

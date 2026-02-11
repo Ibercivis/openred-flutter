@@ -1,4 +1,4 @@
-package es.openred.openred
+package es.ibercivis.openred
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -17,6 +17,28 @@ enum _MapLayer {
   light,
 }
 
+bool _isNetworkErrorText(Object? message) {
+  final text = message?.toString().toLowerCase() ?? '';
+  if (text.isEmpty) return false;
+  return text.contains('network error') ||
+      text.contains('socketexception') ||
+      text.contains('failed host lookup') ||
+      text.contains('connection refused') ||
+      text.contains('connection reset') ||
+      text.contains('timed out') ||
+      text.contains('timeout') ||
+      text.contains('os error') ||
+      text.contains('errno') ||
+      text.contains('no address associated') ||
+      text.contains('handshakeexception') ||
+      text.contains('connection aborted') ||
+      text.contains('network is unreachable');
+}
+
+SnackBar _serverDownSnackBar() {
+  return const SnackBar(content: Text('Server down'));
+}
+
 class MapPage extends StatefulWidget {
   const MapPage({
     super.key,
@@ -354,9 +376,14 @@ class _MapPageState extends State<MapPage> {
 
       if (result['success'] != true) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message']?.toString() ?? 'Failed to load hexagons')),
-        );
+        final message = result['message']?.toString();
+        if (_isNetworkErrorText(message)) {
+          ScaffoldMessenger.of(context).showSnackBar(_serverDownSnackBar());
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message ?? 'Failed to load hexagons')),
+          );
+        }
         return;
       }
 
@@ -398,9 +425,13 @@ class _MapPageState extends State<MapPage> {
       _hexTapCancelable = manager.tapEvents(onTap: _handleHexTap);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load hexagons: $e')),
-      );
+      if (_isNetworkErrorText(e)) {
+        ScaffoldMessenger.of(context).showSnackBar(_serverDownSnackBar());
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load hexagons: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isFetching = false);
     }

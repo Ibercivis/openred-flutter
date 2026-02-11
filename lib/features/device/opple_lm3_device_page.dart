@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart' as geo;
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -156,7 +157,7 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
     controller.value = 0.0;
   }
 
-  Future<bool> _ensureHighAccuracyLocationReady() async {
+  Future<bool> _ensureHighAccuracyLocationReady({bool requireBackground = false}) async {
     final serviceEnabled = await geo.Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return false;
 
@@ -170,19 +171,57 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
       return false;
     }
 
+    if (requireBackground && Platform.isAndroid) {
+      if (permission == geo.LocationPermission.whileInUse) {
+        final requested = await geo.Geolocator.requestPermission();
+        permission = requested;
+      }
+
+      if (permission != geo.LocationPermission.always) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Activa "Permitir siempre" en ubicación para trackear en segundo plano.',
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        await geo.Geolocator.openAppSettings();
+        return false;
+      }
+    }
+
     return true;
   }
 
-  Future<void> _startLocationUpdates() async {
+  Future<void> _startLocationUpdates({bool skipPermissionCheck = false}) async {
     if (_positionSubscription != null) return;
 
-    final ok = await _ensureHighAccuracyLocationReady();
-    if (!ok) return;
+    if (!skipPermissionCheck) {
+      final ok = await _ensureHighAccuracyLocationReady();
+      if (!ok) return;
+    }
 
-    final settings = geo.LocationSettings(
-      accuracy: geo.LocationAccuracy.bestForNavigation,
-      distanceFilter: 0,
-    );
+    // Configuración específica para Android que evita que el GPS se suspenda
+    final settings = Platform.isAndroid
+        ? geo.AndroidSettings(
+            accuracy: geo.LocationAccuracy.bestForNavigation,
+            distanceFilter: 0,
+            forceLocationManager: true, // Evita suspensión en modo Doze
+            intervalDuration: const Duration(seconds: 5), // Fuerza actualizaciones cada 5s
+            // CRÍTICO: ForegroundNotificationConfig mantiene servicio GPS activo
+            foregroundNotificationConfig: const geo.ForegroundNotificationConfig(
+              notificationText: 'Tracking GPS activo',
+              notificationTitle: 'Open-red GPS',
+              enableWakeLock: true,
+            ),
+          )
+        : geo.LocationSettings(
+            accuracy: geo.LocationAccuracy.bestForNavigation,
+            distanceFilter: 0,
+          );
 
     _positionSubscription =
         geo.Geolocator.getPositionStream(locationSettings: settings).listen((pos) {
@@ -296,6 +335,27 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
     );
   }
 
+  Future<void> _repopulateMapTrackPoints() async {
+    final map = _deviceMap;
+    if (map == null || _recordedPoints.isEmpty) return;
+
+    // Resetear el manager
+    _deviceTrackPointManager = null;
+    _deviceTrackPointManager = await map.annotations.createCircleAnnotationManager();
+
+    // Repoblar todos los puntos guardados
+    for (final point in _recordedPoints) {
+      await _deviceTrackPointManager!.create(
+        CircleAnnotationOptions(
+          geometry: Point(coordinates: Position(point.longitude, point.latitude)),
+          circleRadius: 4.0,
+          circleColor: luxToArgb(point.lux),
+          circleOpacity: 0.9,
+        ),
+      );
+    }
+  }
+
   bool _gpsIsPreciseEnough() {
     final acc = _currentPosition?.accuracy;
     if (acc == null) return false;
@@ -362,6 +422,7 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
 
   Future<void> _startRecording() async {
     final isLoggedIn = await _apiService.isLoggedIn();
+    debugPrint('Starting recording - isLoggedIn: $isLoggedIn');
     if (!mounted) return;
     if (!isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -374,6 +435,7 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
     }
 
     final userId = await _apiService.getCurrentUserId();
+    debugPrint('Got userId: $userId');
     if (!mounted) return;
     if (userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -385,7 +447,10 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
       return;
     }
 
-    unawaited(_startLocationUpdates());
+    final backgroundReady = await _ensureHighAccuracyLocationReady(requireBackground: true);
+    if (!backgroundReady) return;
+
+    unawaited(_startLocationUpdates(skipPermissionCheck: true));
 
     if (!_gpsIsPreciseEnough()) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -421,6 +486,11 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
 
     _startRecordingTimer();
     unawaited(_startRecordingForegroundService());
+    
+    // Mantener CPU activo para que el stream de GPS continue funcionando
+    if (Platform.isAndroid) {
+      WakelockPlus.enable();
+    }
 
     if (mounted) setState(() {});
   }
@@ -506,6 +576,12 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
     _recordingTimer = null;
 
     unawaited(_stopRecordingForegroundService());
+    
+    // Liberar wake lock
+    if (Platform.isAndroid) {
+      WakelockPlus.disable();
+    }
+    
     if (mounted) setState(() {});
   }
 
@@ -660,6 +736,7 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
       final safeTrackName = _sanitizeFilenamePart(trackName);
       final file = File('${tracksDir.path}/track_${safeName}_$safeTrackName.json');
 
+      final deviceName = widget.device.platformName;
       final payload = {
         'trackType': 'light',
         'name': trackName,
@@ -668,7 +745,7 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
         'syncedAt': null,
         'cloudTrackId': null,
         'device': {
-          'name': widget.device.platformName,
+          'name': (deviceName.isNotEmpty) ? deviceName : 'Unknown Device',
           'id': widget.device.remoteId.toString(),
         },
         'startedAt': startedAt.toUtc().toIso8601String(),
@@ -1140,6 +1217,10 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
                                           _enableDeviceMapUserLocation());
                                       unawaited(
                                           _centerDeviceMapOnCurrentPosition());
+                                      // Repoblar puntos si estamos trackeando
+                                      if (_isRecording) {
+                                        unawaited(_repopulateMapTrackPoints());
+                                      }
                                     },
                                   );
                                 },
@@ -1178,6 +1259,10 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
                                       unawaited(_enableDeviceMapUserLocation());
                                       unawaited(
                                           _centerDeviceMapOnCurrentPosition());
+                                      // Repoblar puntos si estamos trackeando
+                                      if (_isRecording) {
+                                        unawaited(_repopulateMapTrackPoints());
+                                      }
                                     },
                                   );
                                 },

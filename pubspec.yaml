@@ -1,21 +1,7 @@
 name: open_red
-description: "A new Flutter project."
-# The following line prevents the package from being accidentally published to
-# pub.dev using `flutter pub publish`. This is preferred for private packages.
-publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+description: "Aplicación de ciencia ciudadana para monitoreo de radiación y contaminación lumínica con dispositivos Open-red."
+publish_to: 'none'
 
-# The following defines the version and build number for your application.
-# A version number is three numbers separated by dots, like 1.2.43
-# followed by an optional build number separated by a +.
-# Both the version and the builder number may be overridden in flutter
-# build by specifying --build-name and --build-number, respectively.
-# In Android, build-name is used as versionName while build-number used as versionCode.
-# Read more about Android versioning at https://developer.android.com/studio/publish/versioning
-# In iOS, build-name is used as CFBundleShortVersionString while build-number is used as CFBundleVersion.
-# Read more about iOS versioning at
-# https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
-# In Windows, build-name is used as the major, minor, and patch parts
-# of the product and file versions while build-number is used as the build suffix.
 version: 1.0.0+1
 
 environment:
@@ -55,6 +41,7 @@ dependencies:
   share_plus: ^10.1.4
   url_launcher: ^6.3.1
   flutter_foreground_task: ^9.2.0
+  wakelock_plus: ^1.2.8
   syncfusion_flutter_gauges: ^32.1.20
   path_provider: ^2.1.5
   flutter_svg: ^2.0.10

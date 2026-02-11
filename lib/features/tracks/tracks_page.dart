@@ -19,6 +19,26 @@ import 'maps/radiation_track_map.dart';
 import 'models.dart';
 
 const String _kRadiationIconAsset = 'assets/icons/radioactive.svg';
+const String _serverDownToastText = 'Server down';
+const String _unauthorizedToastText = 'Unauthorized';
+
+bool _isNetworkErrorText(Object? message) {
+  final text = message?.toString().toLowerCase() ?? '';
+  return text.contains('network error');
+}
+
+bool _isUnauthorizedText(Object? message) {
+  final text = message?.toString().toLowerCase() ?? '';
+  return text.contains('unauthorized') || text.contains('not authenticated');
+}
+
+SnackBar _serverDownSnackBar() {
+  return const SnackBar(content: Text(_serverDownToastText));
+}
+
+SnackBar _unauthorizedSnackBar() {
+  return const SnackBar(content: Text(_unauthorizedToastText));
+}
 
 Widget _trackTypeIconWidget(
   BuildContext context,
@@ -129,6 +149,8 @@ class _TracksPageState extends State<TracksPage> {
 
   void _handleActiveTabChanged() {
     if (!_isActive) return;
+    // Siempre recargar tracks locales cuando se activa la pestaña
+    unawaited(_loadLocalTracks());
     unawaited(_refreshIfAuthChanged());
     unawaited(_prefetchCloudTracks());
   }
@@ -188,10 +210,19 @@ class _TracksPageState extends State<TracksPage> {
       // Eagerly download cloud tracks so list actions (map/buttons) are available immediately.
       unawaited(_prefetchCloudTracks());
     } else {
+      final message = (result['message'] ?? 'Failed to load tracks').toString();
+      if (_isNetworkErrorText(message)) {
+        _showServerDownToast();
+        setState(() {
+          _isLoading = false;
+          _errorMessage = null;
+        });
+        return;
+      }
       setState(() {
         _tracks = const [];
         _isLoading = false;
-        _errorMessage = (result['message'] ?? 'Failed to load tracks').toString();
+        _errorMessage = message;
       });
     }
   }
@@ -235,8 +266,9 @@ class _TracksPageState extends State<TracksPage> {
           await _loadLocalTracks();
         } catch (e) {
           if (!mounted) return;
+          final errorText = _isNetworkErrorText(e) ? _serverDownToastText : e.toString();
           setState(() {
-            _cloudDownloadErrors[cloudId] = e.toString();
+            _cloudDownloadErrors[cloudId] = errorText;
           });
         } finally {
           if (!mounted) return;
@@ -257,8 +289,17 @@ class _TracksPageState extends State<TracksPage> {
       });
     }
     try {
-      final dir = await getApplicationDocumentsDirectory();
-      final tracksDir = Directory('${dir.path}/tracks');
+      final loggedIn = await _apiService.isLoggedIn();
+      if (!loggedIn) {
+        if (!mounted) return;
+        setState(() {
+          _localTracks = const [];
+          _isLoadingLocal = false;
+        });
+        return;
+      }
+
+      final tracksDir = await _userTracksDir();
       if (!await tracksDir.exists()) {
         if (!mounted) return;
         setState(() {
@@ -269,7 +310,7 @@ class _TracksPageState extends State<TracksPage> {
       }
 
       final files = tracksDir
-          .listSync(recursive: true)
+          .listSync()
           .whereType<File>()
           .where((f) => f.path.toLowerCase().endsWith('.json'))
           .toList(growable: false);
@@ -370,6 +411,14 @@ class _TracksPageState extends State<TracksPage> {
       ..showSnackBar(snackBar);
   }
 
+  void _showServerDownToast() {
+    _showSnackBarSafe(_serverDownSnackBar());
+  }
+
+  void _showUnauthorizedToast() {
+    _showSnackBarSafe(_unauthorizedSnackBar());
+  }
+
   Future<void> _syncLocalTrack(LocalTrackFile track) async {
     if (!mounted) return;
     setState(() {
@@ -423,6 +472,14 @@ class _TracksPageState extends State<TracksPage> {
         final msg = (uploadResult['message']?.toString().trim().isNotEmpty == true)
             ? uploadResult['message'].toString()
             : 'Failed to upload track JSON';
+        if (_isUnauthorizedText(msg)) {
+          _showUnauthorizedToast();
+          return;
+        }
+        if (_isNetworkErrorText(msg)) {
+          _showServerDownToast();
+          return;
+        }
         _showSnackBarSafe(
           SnackBar(
             content: Text('Sync failed: $msg'),
@@ -476,14 +533,21 @@ class _TracksPageState extends State<TracksPage> {
       await _loadLocalTracks();
       await _loadTracks();
     } catch (e) {
-      if (mounted) {
-        _showSnackBarSafe(
-          SnackBar(
-            content: Text('Sync failed: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+      if (!mounted) return;
+      if (_isUnauthorizedText(e)) {
+        _showUnauthorizedToast();
+        return;
       }
+      if (_isNetworkErrorText(e)) {
+        _showServerDownToast();
+        return;
+      }
+      _showSnackBarSafe(
+        SnackBar(
+          content: Text('Sync failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -907,13 +971,29 @@ class _TracksPageState extends State<TracksPage> {
                               decoration: const InputDecoration(labelText: 'Campaign'),
                               items: campaignItems
                                   .map(
-                                    (c) => DropdownMenuItem<int>(
-                                      value: int.tryParse(c['id']?.toString() ?? ''),
-                                      child: Text(
-                                        c['name']?.toString() ?? 'Campaign ${c['id']}',
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
+                                    (c) {
+                                      final hpRaw = c['has_password'] ?? c['hasPassword'];
+                                      final hasPassword = hpRaw == true || hpRaw?.toString().toLowerCase() == 'true';
+                                      return DropdownMenuItem<int>(
+                                        value: int.tryParse(c['id']?.toString() ?? ''),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              hasPassword ? Icons.lock : Icons.lock_open,
+                                              size: 18,
+                                              color: hasPassword ? Colors.orange : Colors.green,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                c['name']?.toString() ?? 'Campaign ${c['id']}',
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
                                   )
                                   .toList(),
                               onChanged: (value) {
@@ -1187,12 +1267,16 @@ class _TracksPageState extends State<TracksPage> {
       _openLocalTrack(downloaded.first, showMap: true);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(AppLocalizations.of(context).tracksErrorDownloadFailed(e.toString())),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (_isNetworkErrorText(e)) {
+        _showServerDownToast();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context).tracksErrorDownloadFailed(e.toString())),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -1272,12 +1356,16 @@ class _TracksPageState extends State<TracksPage> {
       await _loadTracks();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(AppLocalizations.of(context).tracksErrorDeleteFailed(e.toString())),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (_isNetworkErrorText(e)) {
+        _showServerDownToast();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context).tracksErrorDeleteFailed(e.toString())),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -2362,6 +2450,16 @@ class _TrackDetailPageState extends State<TrackDetailPage> {
       });
     } catch (e) {
       if (!mounted) return;
+      if (_isNetworkErrorText(e)) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(_serverDownSnackBar());
+        setState(() {
+          _isPreparing = false;
+          _message = null;
+        });
+        return;
+      }
       setState(() {
         _isPreparing = false;
         _message = 'Download failed: $e';
