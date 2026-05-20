@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 class OppleLm3Measurement {
@@ -88,11 +89,66 @@ class OppleLm3Service {
   Future<bool> connect(BluetoothDevice device) async {
     _device = device;
 
-    try {
-      await device.connect(timeout: const Duration(seconds: 15), mtu: null);
-      await Future.delayed(const Duration(milliseconds: 250));
+    // Retry logic for error 133 (common Android BLE issue)
+    const maxRetries = 3;
+    for (var attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        if (kDebugMode) {
+          debugPrint('OppleLM3: Connection attempt $attempt/$maxRetries to device: ${device.platformName}');
+        }
+        
+        // Clear GATT cache BEFORE connecting - helps with error 133
+        try {
+          if (kDebugMode) {
+            debugPrint('OppleLM3: Clearing GATT cache before connection...');
+          }
+          await device.clearGattCache();
+          if (kDebugMode) {
+            debugPrint('OppleLM3: GATT cache cleared');
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('OppleLM3: Failed to clear GATT cache: $e');
+          }
+        }
+        
+        // Add delay before connection attempt (helps with error 133)
+        if (attempt > 1) {
+          final delayMs = attempt * 500;
+          if (kDebugMode) {
+            debugPrint('OppleLM3: Waiting ${delayMs}ms before retry...');
+          }
+          await Future.delayed(Duration(milliseconds: delayMs));
+        }
+        
+        await device.connect(
+          timeout: const Duration(seconds: 30),
+          mtu: null,
+          autoConnect: false, // Direct connection, more reliable with clearGattCache
+        );
+        
+        if (kDebugMode) {
+          debugPrint('OppleLM3: Connection successful!');
+        }
+        
+        // Short delay after connection
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        if (kDebugMode) {
+          debugPrint('OppleLM3: Discovering services...');
+        }
 
       final services = await device.discoverServices();
+      if (kDebugMode) {
+        debugPrint('OppleLM3: Discovered ${services.length} services');
+        for (final s in services) {
+          debugPrint('OppleLM3:   Service: ${s.uuid.toString()}');
+          for (final c in s.characteristics) {
+            debugPrint('OppleLM3:     Char: ${c.uuid.toString()} (write: ${c.properties.write}, writeNoResp: ${c.properties.writeWithoutResponse}, notify: ${c.properties.notify}, read: ${c.properties.read})');
+          }
+        }
+      }
+      
       BluetoothService? lm3;
       for (final s in services) {
         if (s.uuid.toString().toLowerCase() == serviceUuid) {
@@ -100,12 +156,32 @@ class OppleLm3Service {
           break;
         }
       }
-      if (lm3 == null) return false;
+      if (lm3 == null) {
+        if (kDebugMode) {
+          debugPrint('OppleLM3: ERROR - Service UUID not found: $serviceUuid');
+          debugPrint('OppleLM3: HINT - Available service UUIDs:');
+          for (final s in services) {
+            debugPrint('OppleLM3:        ${s.uuid.toString()}');
+          }
+        }
+        return false;
+      }
+      if (kDebugMode) {
+        debugPrint('OppleLM3: Found target service');
+      }
 
       BluetoothCharacteristic? rx;
       BluetoothCharacteristic? tx;
+      
+      if (kDebugMode) {
+        debugPrint('OppleLM3: Found ${lm3.characteristics.length} characteristics');
+      }
+      
       for (final c in lm3.characteristics) {
         final id = c.uuid.toString().toLowerCase();
+        if (kDebugMode) {
+          debugPrint('OppleLM3:   Char: $id (write: ${c.properties.write}, writeNoResp: ${c.properties.writeWithoutResponse}, notify: ${c.properties.notify})');
+        }
         if (id == rxCharacteristicUuid) rx = c;
         if (id == txCharacteristicUuid) tx = c;
       }
@@ -115,22 +191,66 @@ class OppleLm3Service {
       _writeChar = _pickWritable(rx) ?? _pickWritable(tx);
       _notifyChar = tx;
 
-      if (_writeChar == null || _notifyChar == null) return false;
+      if (kDebugMode) {
+        debugPrint('OppleLM3: Write char: ${_writeChar?.uuid.toString() ?? "NULL"}');
+        debugPrint('OppleLM3: Notify char: ${_notifyChar?.uuid.toString() ?? "NULL"}');
+      }
+
+      if (_writeChar == null || _notifyChar == null) {
+        if (kDebugMode) {
+          debugPrint('OppleLM3: ERROR - Missing write or notify characteristic');
+        }
+        return false;
+      }
 
       _notifySubscription?.cancel();
       _notifySubscription = _notifyChar!.onValueReceived.listen(_onNotification);
       device.cancelWhenDisconnected(_notifySubscription!);
       await _notifyChar!.setNotifyValue(true);
 
+      if (kDebugMode) {
+        debugPrint('OppleLM3: Notifications enabled, requesting calibration...');
+      }
+
       // Read calibration matrix (kSensor) first.
-      final calMsg = await _sendCommandAwaitResponse(_reqReadM3, expectedResponse: _resReadM3);
+      // LM4 may take longer to respond, so use longer timeout
+      final calMsg = await _sendCommandAwaitResponse(
+        _reqReadM3, 
+        expectedResponse: _resReadM3,
+        timeout: const Duration(seconds: 10),
+      );
       _parseCalibration(calMsg);
 
+      if (kDebugMode) {
+        debugPrint('OppleLM3: Calibration matrix length: ${_kSensor.length}');
+        if (_kSensor.length == 7) {
+          debugPrint('OppleLM3: Calibration values: ${_kSensor.map((v) => v.toStringAsFixed(6)).join(", ")}');
+        }
+      }
+
       return _kSensor.length == 7;
-    } catch (_) {
-      return false;
+      
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('OppleLM3: ERROR during connect attempt $attempt: $e');
+        debugPrint('OppleLM3: Stack trace: $st');
+      }
+      
+      // Disconnect before retry
+      try {
+        await device.disconnect();
+      } catch (_) {}
+      
+      // If this was the last attempt, return false
+      if (attempt == maxRetries) {
+        return false;
+      }
+      // Otherwise, continue to next retry
     }
   }
+  
+  return false; // All retries exhausted
+}
 
   void startMeasuring({Duration interval = const Duration(milliseconds: 500), double avgPeriodSeconds = 2.0}) {
     stopMeasuring();
@@ -276,6 +396,10 @@ class OppleLm3Service {
   void _onNotification(List<int> data) {
     if (data.isEmpty) return;
 
+    if (kDebugMode) {
+      debugPrint('OppleLM3: Received notification (${data.length} bytes): ${data.map((b) => b.toRadixString(16).padLeft(2, "0")).join(" ")}');
+    }
+
     final msgType = data[0] & 0xE0;
 
     try {
@@ -316,19 +440,47 @@ class OppleLm3Service {
   }
 
   void _parseMsg(Uint8List msg) {
-    if (msg.length < 11) return;
+    if (kDebugMode) {
+      debugPrint('OppleLM3: Parsing message (${msg.length} bytes): ${msg.sublist(0, math.min(20, msg.length)).map((b) => b.toRadixString(16).padLeft(2, "0")).join(" ")}');
+    }
+    
+    if (msg.length < 11) {
+      if (kDebugMode) {
+        debugPrint('OppleLM3: Message too short');
+      }
+      return;
+    }
     final code = (msg[9] << 8) | msg[10];
+    
+    if (kDebugMode) {
+      debugPrint('OppleLM3: Response code: $code (0x${code.toRadixString(16)})');
+    }
 
     final completer = _pending[code];
     if (completer != null && !completer.isCompleted) {
+      if (kDebugMode) {
+        debugPrint('OppleLM3: Completing pending request for code $code');
+      }
       completer.complete(msg);
+    } else {
+      if (kDebugMode) {
+        debugPrint('OppleLM3: No pending request for code $code (completer: ${completer != null}, completed: ${completer?.isCompleted})');
+      }
     }
   }
 
   void _parseCalibration(Uint8List msg) {
     // Mirrors TS:
     // code at [9..10], then (usually) a status byte at [11], then floats start at [12]
+    if (kDebugMode) {
+      debugPrint('OppleLM3: Parsing calibration message (${msg.length} bytes)');
+      debugPrint('OppleLM3: First bytes: ${msg.sublist(0, math.min(20, msg.length)).map((b) => b.toRadixString(16).padLeft(2, "0")).join(" ")}');
+    }
+    
     if (msg.length < 42) {
+      if (kDebugMode) {
+        debugPrint('OppleLM3: ERROR - Calibration message too short (${msg.length} < 42)');
+      }
       _kSensor = const [];
       return;
     }
@@ -344,10 +496,20 @@ class OppleLm3Service {
   }
 
   OppleLm3Measurement? _parseMeasurement(Uint8List msg) {
-    if (_kSensor.length != 7) return null;
+    if (_kSensor.length != 7) {
+      if (kDebugMode) {
+        debugPrint('OppleLM3: Cannot parse measurement - invalid calibration (length: ${_kSensor.length})');
+      }
+      return null;
+    }
 
     // TS does: parseMeasurementData(data.subarray(11), ...)
-    if (msg.length < 11 + 16) return null;
+    if (msg.length < 11 + 16) {
+      if (kDebugMode) {
+        debugPrint('OppleLM3: Cannot parse measurement - message too short (${msg.length} bytes)');
+      }
+      return null;
+    }
     final data = Uint8List.sublistView(msg, 11);
 
     // data[0] appears to be a status/flag byte; channels begin at data[1]

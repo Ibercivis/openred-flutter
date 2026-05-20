@@ -86,6 +86,10 @@ class _BLEScannerPageState extends State<BLEScannerPage> {
   }
 
   Future<void> _requestPermissions() async {
+    // permission_handler handles API level internally:
+    // - Android 12+ (API 31+): bluetoothScan/bluetoothConnect are runtime permissions → shows dialog.
+    // - Android 11 and below: bluetoothScan/bluetoothConnect are install-time → auto-granted.
+    //   ACCESS_FINE_LOCATION is required for BLE scanning on Android ≤ 11 → shows dialog.
     final statuses = await [
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
@@ -188,11 +192,15 @@ class _BLEScannerPageState extends State<BLEScannerPage> {
     final l10n = AppLocalizations.of(context);
 
     Widget body;
-    if (_scanResults.isNotEmpty) {
+    final compatibleResults = _scanResults
+        .where((r) => _registry.match(r) != null)
+        .toList();
+
+    if (compatibleResults.isNotEmpty) {
       body = ListView.builder(
-        itemCount: _scanResults.length,
+        itemCount: compatibleResults.length,
         itemBuilder: (context, index) {
-          final result = _scanResults[index];
+          final result = compatibleResults[index];
           final device = result.device;
           final deviceId = device.remoteId.toString();
           final serviceUuids = result.advertisementData.serviceUuids;
@@ -211,8 +219,8 @@ class _BLEScannerPageState extends State<BLEScannerPage> {
             margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: ListTile(
               leading: Icon(
-                match == null ? Icons.bluetooth_searching : Icons.bluetooth,
-                color: match == null ? Colors.grey : Colors.blue,
+                Icons.bluetooth_rounded,
+                color: Theme.of(context).colorScheme.primary,
                 size: 32,
               ),
               title: Text(
@@ -224,19 +232,14 @@ class _BLEScannerPageState extends State<BLEScannerPage> {
                 children: [
                   Text(l10n.deviceListId(deviceId)),
                   Text(l10n.deviceListRssi(result.rssi)),
-                  if (match != null)
-                    Text('Supported: ${match.definition.displayName}'),
+                  Text('Supported: ${match!.definition.displayName}'),
                   if (serviceUuids.isNotEmpty)
                     Text('UUIDs: ${serviceUuids.join(", ")}'),
-                  if (match == null)
-                    const Text('Unsupported device'),
                 ],
               ),
-              trailing: match == null
-                  ? null
-                  : ElevatedButton(
+              trailing: ElevatedButton(
                       onPressed:
-                          _isConnecting ? null : () => _openDevice(match),
+                          _isConnecting ? null : () => _openDevice(match!),
                       child: Text(
                         (_isConnecting && _connectingDeviceId == deviceId)
                             ? l10n.deviceConnecting
@@ -255,7 +258,7 @@ class _BLEScannerPageState extends State<BLEScannerPage> {
             Icon(
               Icons.bluetooth_searching,
               size: 64,
-              color: Colors.grey.shade400,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
             const SizedBox(height: 16),
             Text(
@@ -264,7 +267,7 @@ class _BLEScannerPageState extends State<BLEScannerPage> {
                   : l10n.deviceNoRadiaCodeDevicesFound,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.grey.shade600,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 16,
               ),
             ),

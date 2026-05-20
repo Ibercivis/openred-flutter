@@ -17,6 +17,7 @@ import '../../devices/core/device_session.dart';
 import '../../devices/opple/opple_lm3_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../lux_color.dart';
+import '../../marna_layer.dart';
 import '../../models/recorded_track_point.dart';
 import '../../recording_foreground_task.dart';
 
@@ -56,6 +57,8 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
   CircleAnnotationManager? _deviceTrackPointManager;
   bool _deviceMapFollowUser = true;
 
+  bool _marnaEnabled = false;
+
   bool _isRecording = false;
   bool _isPaused = false;
   bool _autoPausedDueToGps = false;
@@ -73,6 +76,18 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
   bool _isConnecting = true;
   String _status = 'Connecting...';
 
+  bool get _isActiveTab {
+    final active = widget.activeTabIndex;
+    final tab = widget.tabIndex;
+    if (active == null || tab == null) return true;
+    return active.value == tab;
+  }
+
+  void _handleActiveTabChanged() {
+    if (!_isActiveTab) return;
+    unawaited(_refreshTrackingAuth());
+  }
+
   @override
   void initState() {
     super.initState();
@@ -85,6 +100,7 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
       curve: Curves.easeInOut,
     );
 
+    widget.activeTabIndex?.addListener(_handleActiveTabChanged);
     unawaited(_startLocationUpdates());
     unawaited(_refreshTrackingAuth(force: true));
     _connectAndStart();
@@ -92,6 +108,8 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
 
   @override
   void dispose() {
+    widget.activeTabIndex?.removeListener(_handleActiveTabChanged);
+
     _recordingTimer?.cancel();
     _recordingTimer = null;
 
@@ -782,15 +800,26 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
       _status = 'Connecting...';
     });
 
+    if (kDebugMode) {
+      debugPrint('OppleLM3 Page: Starting connection to ${widget.device.platformName}');
+    }
+
     final ok = await _service.connect(widget.device);
     if (!mounted) return;
 
     if (!ok) {
+      if (kDebugMode) {
+        debugPrint('OppleLM3 Page: Connection failed');
+      }
       setState(() {
         _isConnecting = false;
         _status = 'Failed to connect/initialize LM3 (service/characteristics/calibration)';
       });
       return;
+    }
+
+    if (kDebugMode) {
+      debugPrint('OppleLM3 Page: Connection successful, starting measurements');
     }
 
     _sub?.cancel();
@@ -847,13 +876,12 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: ElevatedButton.icon(
+            child: TextButton.icon(
               onPressed: () => _disconnect(context),
-              icon: const Icon(Icons.bluetooth_disabled),
+              icon: const Icon(Icons.bluetooth_disabled, size: 18),
               label: Text(l10n.deviceDisconnect),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent,
-                foregroundColor: Colors.white,
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.grey,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               ),
             ),
@@ -1217,6 +1245,9 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
                                           _enableDeviceMapUserLocation());
                                       unawaited(
                                           _centerDeviceMapOnCurrentPosition());
+                                      unawaited(MarnaLayer.ensureAdded(mapboxMap).then((_) {
+                                        if (_marnaEnabled) MarnaLayer.setVisible(mapboxMap, visible: true);
+                                      }));
                                       // Repoblar puntos si estamos trackeando
                                       if (_isRecording) {
                                         unawaited(_repopulateMapTrackPoints());
@@ -1259,6 +1290,9 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
                                       unawaited(_enableDeviceMapUserLocation());
                                       unawaited(
                                           _centerDeviceMapOnCurrentPosition());
+                                      unawaited(MarnaLayer.ensureAdded(mapboxMap).then((_) {
+                                        if (_marnaEnabled) MarnaLayer.setVisible(mapboxMap, visible: true);
+                                      }));
                                       // Repoblar puntos si estamos trackeando
                                       if (_isRecording) {
                                         unawaited(_repopulateMapTrackPoints());
@@ -1267,6 +1301,20 @@ class _OppleLm3DevicePageState extends State<OppleLm3DevicePage>
                                   );
                                 },
                               ),
+                            Positioned(
+                              right: 12,
+                              bottom: 72,
+                              child: MarnaLayerToggle(
+                                enabled: _marnaEnabled,
+                                onToggle: () {
+                                  setState(() => _marnaEnabled = !_marnaEnabled);
+                                  final map = _deviceMap;
+                                  if (map != null) {
+                                    unawaited(MarnaLayer.setVisible(map, visible: _marnaEnabled));
+                                  }
+                                },
+                              ),
+                            ),
                             Positioned(
                               right: 12,
                               bottom: 12,

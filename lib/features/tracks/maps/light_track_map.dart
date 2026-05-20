@@ -1,17 +1,21 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 
 import '../../../lux_color.dart';
+import '../../../marna_layer.dart';
 import '../../../models/recorded_track_point.dart';
 
 class LightTrackMap extends StatefulWidget {
   final List<LightTrackPoint> points;
+  final VoidCallback? onDelete;
 
   const LightTrackMap({
     super.key,
     required this.points,
+    this.onDelete,
   });
 
   @override
@@ -26,6 +30,8 @@ class _LightTrackMapState extends State<LightTrackMap> {
   int? _selectedPointIndex;
   Offset? _popupAnchor;
   bool _ignoreNextMapTap = false;
+
+  bool _marnaEnabled = false;
 
   List<LightTrackPoint>? _lastValidMapPoints;
 
@@ -277,13 +283,19 @@ class _LightTrackMapState extends State<LightTrackMap> {
           onTapListener: _handleMapTap,
           onMapCreated: (mapController) async {
             _mapController = mapController;
+            await mapController.location.updateSettings(
+              LocationComponentSettings(enabled: false),
+            );
+            unawaited(MarnaLayer.ensureAdded(mapController).then((_) {
+              if (_marnaEnabled) MarnaLayer.setVisible(mapController, visible: true);
+            }));
 
             final circleManager = await mapController.annotations.createCircleAnnotationManager();
 
             _annotationIndex.clear();
             _circleTapCancelable?.cancel();
 
-            final circleRadius = (validPoints.length >= 120) ? 6.0 : 9.0;
+            final circleRadius = (validPoints.length >= 120) ? 9.0 : 13.0;
 
             for (var i = 0; i < validPoints.length; i++) {
               final p = validPoints[i];
@@ -292,7 +304,10 @@ class _LightTrackMapState extends State<LightTrackMap> {
                   geometry: Point(coordinates: Position(p.longitude, p.latitude)),
                   circleRadius: circleRadius,
                   circleColor: luxToArgb(p.lux),
-                  circleOpacity: 0.85,
+                  circleOpacity: 0.9,
+                  circleStrokeWidth: 1.5,
+                  circleStrokeColor: 0xFFFFFFFF,
+                  circleStrokeOpacity: 0.8,
                 ),
               );
               _annotationIndex[annotation.id] = i;
@@ -327,6 +342,33 @@ class _LightTrackMapState extends State<LightTrackMap> {
               child: _buildPointPopup(validPoints[_selectedPointIndex!], _selectedPointIndex!),
             ),
           ),
+        if (widget.onDelete != null)
+          Positioned(
+            right: 12,
+            top: 12,
+            child: FloatingActionButton.small(
+              heroTag: 'light_delete',
+              tooltip: 'Delete track',
+              backgroundColor: Colors.red.shade700,
+              foregroundColor: Colors.white,
+              onPressed: widget.onDelete,
+              child: const Icon(Icons.delete_outline_rounded),
+            ),
+          ),
+        Positioned(
+          right: 12,
+          bottom: 12,
+          child: MarnaLayerToggle(
+            enabled: _marnaEnabled,
+            onToggle: () {
+              setState(() => _marnaEnabled = !_marnaEnabled);
+              final map = _mapController;
+              if (map != null) {
+                unawaited(MarnaLayer.setVisible(map, visible: _marnaEnabled));
+              }
+            },
+          ),
+        ),
       ],
     );
   }

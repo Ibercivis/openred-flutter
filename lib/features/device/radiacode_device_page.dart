@@ -18,6 +18,7 @@ import 'package:syncfusion_flutter_gauges/gauges.dart';
 
 import '../../api_service.dart';
 import '../../dose_color.dart';
+import '../../marna_layer.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/recorded_track_point.dart';
 import '../../radiacode_service.dart';
@@ -41,7 +42,7 @@ class RadiacodeDevicePage extends StatefulWidget {
 }
 
 class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final ApiService _apiService = ApiService();
   String? _lastAuthTokenForTracking;
   bool _isLoggedInForTracking = false;
@@ -65,6 +66,8 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
 
   static const double _deviceMapDefaultZoom = 14.0;
   static const double _deviceMapNavPitch = 45.0;
+
+  bool _marnaEnabled = false;
 
   static const double _requiredGpsAccuracyMeters = 75.0;
   bool _isRecording = false;
@@ -110,6 +113,27 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
     return active.value == tab;
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    print('[Lifecycle] App state changed to: $state');
+    
+    if (state == AppLifecycleState.resumed) {
+      // Al volver de suspensión, resetear flag por si quedó en true
+      _isReadingData = false;
+
+      // Si estamos conectados y el timer no está activo, reiniciarlo
+      if (connectedDevice != null && _radiaCodeService != null) {
+        if (_dataUpdateTimer == null || !_dataUpdateTimer!.isActive) {
+          print('[Lifecycle] Restarting data reading timer after resume');
+          _startDataReading();
+        }
+      }
+
+      // Re-check auth in case the user logged in/out while the app was in background.
+      unawaited(_refreshTrackingAuth());
+    }
+  }
+
   void _handleActiveTabChanged() {
     if (!_isActiveTab) {
       _deviceMap = null;
@@ -121,12 +145,17 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
     if (_autoReconnectEnabled && connectedDevice == null) {
       _scheduleReconnect(immediate: true);
     }
+
+    // Re-check auth so the recording button reflects login state changes
+    // that happened while on another tab (e.g., user just logged in).
+    unawaited(_refreshTrackingAuth());
   }
 
   @override
   void initState() {
     super.initState();
 
+    WidgetsBinding.instance.addObserver(this);
     widget.activeTabIndex?.addListener(_handleActiveTabChanged);
 
     _connectionStateSubscription = widget.device.connectionState.listen(
@@ -229,6 +258,7 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.activeTabIndex?.removeListener(_handleActiveTabChanged);
     _connectionStateSubscription?.cancel();
     _reconnectTimer?.cancel();
@@ -760,6 +790,8 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
     final backgroundReady = await _ensureHighAccuracyLocationReady(requireBackground: true);
     if (!backgroundReady) return;
 
+    unawaited(_startLocationUpdates(skipPermissionCheck: true));
+
     if (!_gpsIsPreciseEnough()) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -783,7 +815,6 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
     }
 
     _deviceMapFollowUser = true;
-    unawaited(_startLocationUpdates(skipPermissionCheck: true));
 
     _recordedPoints.clear();
     _isRecording = true;
@@ -1310,7 +1341,15 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
                       centerY: 0.72,
                       radiusFactor: 1.0,
                       showLabels: false,
-                      showTicks: false,
+                      showTicks: true,
+                      interval: (max - min) / 5,
+                      minorTicksPerInterval: 0,
+                      majorTickStyle: MajorTickStyle(
+                        length: 6,
+                        lengthUnit: GaugeSizeUnit.logicalPixel,
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
+                        thickness: 1.5,
+                      ),
                       axisLineStyle: const AxisLineStyle(
                         thickness: 0,
                         thicknessUnit: GaugeSizeUnit.logicalPixel,
@@ -1379,7 +1418,29 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
                 ),
               ),
             ),
-            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    safeMin.toStringAsFixed(fractionDigits),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  Text(
+                    '${safeMax % 1 == 0 ? safeMax.toInt() : safeMax.toStringAsFixed(1)} $unit',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
             buildSparkline(history, accent),
           ],
         ),
@@ -1425,7 +1486,7 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
                 ),
                 Padding(
                   padding: const EdgeInsets.only(right: 12),
-                  child: ElevatedButton.icon(
+                  child: TextButton.icon(
                     onPressed: _isDisconnecting
                         ? null
                         : () async {
@@ -1435,20 +1496,16 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
                           },
                     icon: _isDisconnecting
                         ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.bluetooth_disabled),
+                        : const Icon(Icons.bluetooth_disabled, size: 18),
                     label: Text(
                       _isDisconnecting ? l10n.deviceDisconnecting : l10n.deviceDisconnect,
                     ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.redAccent,
-                      foregroundColor: Colors.white,
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.grey,
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     ),
                   ),
@@ -1746,6 +1803,9 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
                                           _deviceMap = mapboxMap;
                                           unawaited(_enableDeviceMapUserLocation());
                                           unawaited(_centerDeviceMapOnCurrentPosition());
+                                          unawaited(MarnaLayer.ensureAdded(mapboxMap).then((_) {
+                                            if (_marnaEnabled) MarnaLayer.setVisible(mapboxMap, visible: true);
+                                          }));
                                           // Repoblar puntos si estamos trackeando
                                           if (_isRecording) {
                                             unawaited(_repopulateMapTrackPoints());
@@ -1787,6 +1847,9 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
                                           _deviceMap = mapboxMap;
                                           unawaited(_enableDeviceMapUserLocation());
                                           unawaited(_centerDeviceMapOnCurrentPosition());
+                                          unawaited(MarnaLayer.ensureAdded(mapboxMap).then((_) {
+                                            if (_marnaEnabled) MarnaLayer.setVisible(mapboxMap, visible: true);
+                                          }));
                                           // Repoblar puntos si estamos trackeando
                                           if (_isRecording) {
                                             unawaited(_repopulateMapTrackPoints());
@@ -1795,6 +1858,20 @@ class _RadiacodeDevicePageState extends State<RadiacodeDevicePage>
                                       );
                                     },
                                   ),
+                                Positioned(
+                                  right: 12,
+                                  bottom: 72,
+                                  child: MarnaLayerToggle(
+                                    enabled: _marnaEnabled,
+                                    onToggle: () {
+                                      setState(() => _marnaEnabled = !_marnaEnabled);
+                                      final map = _deviceMap;
+                                      if (map != null) {
+                                        unawaited(MarnaLayer.setVisible(map, visible: _marnaEnabled));
+                                      }
+                                    },
+                                  ),
+                                ),
                                 Positioned(
                                   right: 12,
                                   bottom: 12,

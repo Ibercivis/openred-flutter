@@ -6,6 +6,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../../api_service.dart';
 import '../../config.dart';
 import '../../l10n/app_localizations.dart';
+import '../auth/login_screen.dart';
 import 'settings_page.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -269,24 +270,13 @@ class _ProfilePageState extends State<ProfilePage> {
     await _apiService.logout();
     try {
       await _googleSignIn.signOut();
-    } catch (_) {
-      // Ignore Google sign-out errors.
-    }
-    setState(() {
-      _isLoggedIn = false;
-      _userData = null;
-      _loginEmailController.clear();
-      _loginPasswordController.clear();
-    });
-    if (mounted) {
-      final l10n = AppLocalizations.of(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(l10n.snackLoggedOut),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
+    } catch (_) {}
+
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
   }
 
   @override
@@ -323,7 +313,7 @@ class _ProfilePageState extends State<ProfilePage> {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.white.withOpacity(0.7),
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -376,11 +366,15 @@ class _ProfilePageState extends State<ProfilePage> {
           const SizedBox(height: 20),
           CircleAvatar(
             radius: 50,
-            backgroundColor: Colors.blue.shade100,
+            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
             child: Text(
               (username.trim().isNotEmpty ? username.trim().substring(0, 1) : '?')
                   .toUpperCase(),
-              style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 40,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+              ),
             ),
           ),
           const SizedBox(height: 20),
@@ -391,7 +385,7 @@ class _ProfilePageState extends State<ProfilePage> {
           const SizedBox(height: 8),
           Text(
             email,
-            style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+            style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 8),
           Container(
@@ -459,7 +453,8 @@ class _ProfilePageState extends State<ProfilePage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 40),
-            const Icon(Icons.person_outline, size: 80, color: Colors.blue),
+            Icon(Icons.person_outline_rounded, size: 80,
+                color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 20),
             Text(
               l10n.loginWelcomeBack,
@@ -469,7 +464,7 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 8),
             Text(
               l10n.loginToYourAccount,
-              style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+              style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 40),
@@ -533,7 +528,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Text(
                     l10n.or,
-                    style: TextStyle(color: Colors.grey.shade600),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ),
                 const Expanded(child: Divider()),
@@ -571,7 +566,8 @@ class _ProfilePageState extends State<ProfilePage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 40),
-            const Icon(Icons.person_add, size: 80, color: Colors.blue),
+            Icon(Icons.person_add_rounded, size: 80,
+                color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 20),
             const Text(
               'Create Account',
@@ -581,7 +577,7 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 8),
             Text(
               'Sign up to get started',
-              style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+              style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 40),

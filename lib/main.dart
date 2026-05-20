@@ -5,6 +5,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'app_locale.dart';
 import 'app_theme.dart';
 import 'config.dart';
+import 'features/auth/splash_screen.dart';
 import 'features/device/device_tab_page.dart';
 import 'features/about/about_page.dart';
 import 'features/map/map_page.dart';
@@ -36,8 +37,9 @@ class MyApp extends StatelessWidget {
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,
               themeMode: themeMode,
-              darkTheme: ThemeData.dark(),
-              home: const MainScreen(),
+              theme: AppTheme.light(),
+              darkTheme: AppTheme.dark(),
+              home: const SplashScreen(),
             );
           },
         );
@@ -130,29 +132,33 @@ class _MainScreenState extends State<MainScreen> {
         index: _currentIndex,
         children: List.generate(5, _buildTab),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: _selectTab,
-        type: BottomNavigationBarType.fixed,
-        items: [
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.bluetooth),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: _selectTab,
+        destinations: [
+          NavigationDestination(
+            icon: const Icon(Icons.sensors_outlined),
+            selectedIcon: const Icon(Icons.sensors),
             label: l10n.navDevice,
           ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.route),
+          NavigationDestination(
+            icon: const Icon(Icons.route_outlined),
+            selectedIcon: const Icon(Icons.route),
             label: l10n.navTracks,
           ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.map),
+          NavigationDestination(
+            icon: const Icon(Icons.public_outlined),
+            selectedIcon: const Icon(Icons.public),
             label: l10n.navMap,
           ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.info_outline),
+          NavigationDestination(
+            icon: const Icon(Icons.info_outline_rounded),
+            selectedIcon: const Icon(Icons.info_rounded),
             label: l10n.navAbout,
           ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.person),
+          NavigationDestination(
+            icon: const Icon(Icons.person_outline_rounded),
+            selectedIcon: const Icon(Icons.person_rounded),
             label: l10n.navProfile,
           ),
         ],

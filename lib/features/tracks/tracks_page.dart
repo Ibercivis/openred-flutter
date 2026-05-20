@@ -93,6 +93,9 @@ class _TracksPageState extends State<TracksPage> {
   List<LocalTrackFile> _localTracks = const [];
 
   final Set<String> _expandedKeys = <String>{};
+
+  /// null = show all, 'radiation' or 'light' = filtered
+  String? _typeFilter;
   final Set<String> _syncingLocalPaths = <String>{};
   final Set<int> _downloadingCloudTrackIds = <int>{};
   final Map<int, String> _cloudDownloadErrors = <int, String>{};
@@ -138,6 +141,21 @@ class _TracksPageState extends State<TracksPage> {
     if (diff.inDays < 1) return '${diff.inHours}h ago';
     if (diff.inDays < 14) return '${diff.inDays}d ago';
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+  }
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  /// Absolute date + time for the track card: "4 Mar · 17:23"
+  String _formatCardDateTime(DateTime dt) {
+    final local = dt.toLocal();
+    final day = local.day;
+    final month = _months[local.month - 1];
+    final h = local.hour.toString().padLeft(2, '0');
+    final m = local.minute.toString().padLeft(2, '0');
+    return '$day $month · $h:$m';
   }
 
   @override
@@ -214,6 +232,16 @@ class _TracksPageState extends State<TracksPage> {
       if (_isNetworkErrorText(message)) {
         _showServerDownToast();
         setState(() {
+          _isLoading = false;
+          _errorMessage = null;
+        });
+        return;
+      }
+      if (_isUnauthorizedText(message)) {
+        // Token stale — silently clear tracks and let the UI show the login prompt.
+        setState(() {
+          _isLoggedIn = false;
+          _tracks = const [];
           _isLoading = false;
           _errorMessage = null;
         });
@@ -338,6 +366,21 @@ class _TracksPageState extends State<TracksPage> {
         _localTracks = const [];
         _isLoadingLocal = false;
       });
+    }
+  }
+
+  /// Deletes local files that were downloaded from the cloud (cache).
+  /// Preserves locally-recorded tracks (cloudTrackId == null).
+  Future<void> _clearCloudTrackCache() async {
+    final toDelete = _localTracks.where((t) => t.cloudTrackId != null).toList();
+    for (final track in toDelete) {
+      try {
+        if (await track.file.exists()) {
+          await track.file.delete();
+        }
+      } catch (_) {
+        // ignore individual delete errors
+      }
     }
   }
 
@@ -593,9 +636,13 @@ class _TracksPageState extends State<TracksPage> {
     }
 
     final trackTypeRaw = cloudTrack['trackType'] ?? cloudTrack['track_type'] ?? cloudTrack['type'] ?? cloudTrack['kind'];
-    final trackType = trackTypeRaw?.toString().trim().toLowerCase();
+    var trackType = trackTypeRaw?.toString().trim().toLowerCase();
+    print('Download track - trackTypeRaw: $trackTypeRaw, trackType: $trackType');
+    
+    // Fallback a 'radiation' si no es válido
     if (trackType != 'radiation' && trackType != 'light') {
-      throw Exception('Cloud track missing/invalid trackType');
+      print('⚠️ trackType inválido o nulo, usando fallback: radiation');
+      trackType = 'radiation';
     }
 
     List<Map<String, dynamic>> normalizePointsFromMaps(List<Map<String, dynamic>> items) {
@@ -675,6 +722,8 @@ class _TracksPageState extends State<TracksPage> {
       return pts;
     }
 
+    print('[download] cloudId=$cloudId trackType=$trackType keys=${cloudTrack.keys.toList()}');
+
     final points = <Map<String, dynamic>>[];
     if (trackType == 'radiation') {
       final result = await _apiService.getTrackMeasurements(cloudId);
@@ -687,12 +736,27 @@ class _TracksPageState extends State<TracksPage> {
           .toList(growable: false);
       points.addAll(normalizePointsFromMaps(measurements));
     } else {
-      final raw = cloudTrack['points'] ?? cloudTrack['measurements'];
-      if (raw is! List) {
-        throw Exception('Cloud light track has no embedded points; backend must provide a light measurements endpoint or include points.');
+      final fileUrl = cloudTrack['file']?.toString();
+      print('[download] light track fileUrl=$fileUrl');
+      if (fileUrl == null || fileUrl.isEmpty) {
+        print('[download] ERROR: light track has no file URL. Full cloudTrack: $cloudTrack');
+        throw Exception('Cloud light track has no file URL');
       }
-      final items = raw.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList(growable: false);
-      points.addAll(normalizePointsFromMaps(items));
+      final result = await _apiService.getLightTrackFile(fileUrl);
+      print('[download] light track file result success=${result['success']} message=${result['message']}');
+      if (result['success'] != true) {
+        throw Exception(result['message'] ?? 'Failed to fetch light track file');
+      }
+      final measurements = (result['measurements'] as List? ?? const [])
+          .whereType<Map>()
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList(growable: false);
+      print('[download] light track file has ${measurements.length} points');
+      if (measurements.isNotEmpty) {
+        print('[download] first point keys: ${measurements.first.keys.toList()}');
+        print('[download] first point: ${measurements.first}');
+      }
+      points.addAll(normalizePointsFromMaps(measurements));
     }
 
     final name = (cloudTrack['name']?.toString().trim().isNotEmpty == true)
@@ -1220,7 +1284,14 @@ class _TracksPageState extends State<TracksPage> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => LocalTrackDetailPage(track: track, initialShowMap: showMap),
+        builder: (context) => LocalTrackDetailPage(
+          track: track,
+          initialShowMap: showMap,
+          onDelete: () {
+            Navigator.pop(context);
+            _confirmDeleteLocalTrack(track);
+          },
+        ),
       ),
     );
   }
@@ -1388,7 +1459,7 @@ class _TracksPageState extends State<TracksPage> {
     // Note: IndexedStack keeps pages alive; we rely on the activeTabIndex listener
     // to refresh/prefetch when returning to this tab.
 
-    if (_isLoading) {
+    if (_isLoading && _tracks.isEmpty && _localTracks.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -1411,7 +1482,7 @@ class _TracksPageState extends State<TracksPage> {
                   const SizedBox(height: 12),
                   ElevatedButton(
                     onPressed: () {
-                      widget.onRequestTab(3);
+                      widget.onRequestTab(4);
                     },
                     child: Text(l10n.login),
                   ),
@@ -1475,6 +1546,22 @@ class _TracksPageState extends State<TracksPage> {
 
     merged.sort((a, b) => sortTime(b).compareTo(sortTime(a)));
 
+    // Apply type filter
+    String? _itemType(Map<String, dynamic> item) {
+      final local = item['local'] as LocalTrackFile?;
+      final cloud = item['cloud'] as Map<String, dynamic>?;
+      return local != null
+          ? _inferLocalTrackType(local)
+          : (cloud?['track_type'] ?? cloud?['trackType'])
+              ?.toString()
+              .trim()
+              .toLowerCase();
+    }
+
+    final filtered = _typeFilter == null
+        ? merged
+        : merged.where((item) => _itemType(item) == _typeFilter).toList();
+
     return Scaffold(
       appBar: AppBar(
         title: Column(
@@ -1488,7 +1575,7 @@ class _TracksPageState extends State<TracksPage> {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.white.withOpacity(0.7),
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1518,6 +1605,7 @@ class _TracksPageState extends State<TracksPage> {
             });
           }
           try {
+            await _clearCloudTrackCache();
             await _loadLocalTracks();
             await _loadTracks();
           } finally {
@@ -1531,6 +1619,34 @@ class _TracksPageState extends State<TracksPage> {
         child: ListView(
           padding: const EdgeInsets.all(8),
           children: [
+            // ── Filter chips ──────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  FilterChip(
+                    label: const Text('All'),
+                    selected: _typeFilter == null,
+                    onSelected: (_) => setState(() => _typeFilter = null),
+                  ),
+                  FilterChip(
+                    label: const Text('Radiation'),
+                    avatar: const Icon(Icons.radar, size: 16),
+                    selected: _typeFilter == 'radiation',
+                    onSelected: (on) => setState(
+                        () => _typeFilter = on ? 'radiation' : null),
+                  ),
+                  FilterChip(
+                    label: const Text('Light'),
+                    avatar: const Icon(Icons.wb_sunny_outlined, size: 16),
+                    selected: _typeFilter == 'light',
+                    onSelected: (on) =>
+                        setState(() => _typeFilter = on ? 'light' : null),
+                  ),
+                ],
+              ),
+            ),
             if (!_isLoggedIn)
               Card(
                 child: ListTile(
@@ -1538,7 +1654,7 @@ class _TracksPageState extends State<TracksPage> {
                   title: Text(l10n.tracksLoginToSync),
                   trailing: ElevatedButton(
                     onPressed: () {
-                      widget.onRequestTab(3);
+                      widget.onRequestTab(4);
                     },
                     child: Text(l10n.login),
                   ),
@@ -1560,42 +1676,36 @@ class _TracksPageState extends State<TracksPage> {
                   ),
                 ),
               )
-            else if (merged.isEmpty)
+            else if (filtered.isEmpty)
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.route, color: Colors.grey),
-                  title: Text(l10n.tracksNoTracksYet),
-                  subtitle: Text(l10n.tracksNoTracksSubtitle),
+                  title: Text(_typeFilter != null
+                      ? 'No $_typeFilter tracks'
+                      : l10n.tracksNoTracksYet),
+                  subtitle: _typeFilter == null
+                      ? Text(l10n.tracksNoTracksSubtitle)
+                      : null,
                 ),
               )
             else
-              ...merged.map((item) {
+              ...filtered.map((item) {
                 final local = item['local'] as LocalTrackFile?;
                 final cloud = item['cloud'] as Map<String, dynamic>?;
                 final cloudId = item['cloudId'] as int?;
 
+                // key kept for future use (e.g. expanded state)
+                // ignore: unused_local_variable
                 final key = cloudId != null ? 'unified:$cloudId' : 'local:${local!.file.path}';
-                final expanded = _isExpanded(key);
 
                 final title = local?.name ?? cloud?['name']?.toString() ?? l10n.tracksUnnamed;
-                final description = (local != null)
-                    ? local.description
-                    : (cloud != null ? _cloudTrackDescription(cloud) : '');
 
-                final localType = (local == null) ? null : _inferLocalTrackType(local);
-                final typeIcon = _trackTypeIconWidget(
-                  context,
-                  localType ?? 'unknown',
-                  size: 16,
-                  color: Colors.grey.shade700,
-                );
-
-                final previewPoints = local != null
-                    ? _localTrackPreviewPoints(local)
-                    : (cloud != null ? _cloudTrackPreviewPoints(cloud) : const <Offset>[]);
+                final localType = local != null
+                    ? _inferLocalTrackType(local)
+                    : (cloud?['track_type'] ?? cloud?['trackType'])?.toString().trim().toLowerCase();
 
                 final whenDt = itemStartedAt(item);
-                final when = whenDt == null ? '—' : _formatRelativeDateTime(context, whenDt);
+                final when = whenDt == null ? '—' : _formatCardDateTime(whenDt);
 
                 final distanceText = () {
                   if (local != null) {
@@ -1632,16 +1742,16 @@ class _TracksPageState extends State<TracksPage> {
                   final cloudStatus = cloud == null ? null : _cloudStatus(cloud);
                   if (cloudStatus == 'pending' || cloudStatus == 'processing') {
                     statusText = l10n.tracksStatusPending;
-                    statusIcon = Icons.hourglass_empty;
+                    statusIcon = Icons.hourglass_top_outlined;
                     statusColor = Colors.orange;
                   } else
                   if (local != null) {
                     statusText = local.synced ? l10n.tracksStatusSynced : l10n.tracksStatusLocalAndCloud;
-                    statusIcon = local.synced ? Icons.cloud_done : Icons.cloud;
+                    statusIcon = local.synced ? Icons.cloud_done_outlined : Icons.cloud_outlined;
                     statusColor = local.synced ? Colors.green : null;
                   } else if (_downloadingCloudTrackIds.contains(cloudId)) {
                     statusText = l10n.tracksStatusDownloading;
-                    statusIcon = Icons.cloud_download;
+                    statusIcon = Icons.cloud_download_outlined;
                     statusColor = null;
                   } else if (_cloudDownloadErrors.containsKey(cloudId)) {
                     statusText = l10n.tracksStatusDownloadFailed;
@@ -1649,184 +1759,128 @@ class _TracksPageState extends State<TracksPage> {
                     statusColor = Colors.red;
                   } else {
                     statusText = l10n.tracksStatusCloudOnly;
-                    statusIcon = Icons.cloud_download_outlined;
+                    statusIcon = Icons.cloud_outlined;
                     statusColor = null;
                   }
                 } else {
                   statusText = local?.synced == true ? l10n.tracksStatusSynced : l10n.tracksStatusLocalOnly;
-                  statusIcon = local?.synced == true ? Icons.cloud_done : Icons.folder_open;
+                  statusIcon = local?.synced == true ? Icons.cloud_done_outlined : Icons.folder_outlined;
                   statusColor = local?.synced == true ? Colors.green : null;
                 }
 
                 final isSyncingLocal = local != null && _syncingLocalPaths.contains(local.file.path);
                 final canSync = local != null && _isLoggedIn && local.cloudTrackId == null && !local.synced && !isSyncingLocal;
 
+                final accentColor = localType == 'light'
+                    ? const Color(0xFFFFA000)   // Amber 700
+                    : localType == 'radiation'
+                        ? const Color(0xFF2E7D32) // Green 800
+                        : Theme.of(context).colorScheme.outlineVariant;
+
+                final onSurfaceVariant =
+                    Theme.of(context).colorScheme.onSurfaceVariant;
+                final effectiveStatusColor = statusColor ?? onSurfaceVariant;
+
+                // Tap whole card → open map
+                Future<void> onCardTap() async {
+                  if (local != null) {
+                    _openLocalTrack(local, showMap: true);
+                    return;
+                  }
+                  if (cloud != null) {
+                    await _openCloudTrackEnsuringLocal(cloud);
+                  }
+                }
+
+                final hasActions = cloudId != null || local != null;
+
                 return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
+                  margin: const EdgeInsets.only(bottom: 10),
+                  color: accentColor,
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Tooltip(
-                              message: l10n.tracksTooltipViewOnMap,
-                              child: _TrackPolylineThumbnail(
-                                points: previewPoints,
-                                width: 56,
-                                height: 36,
-                                onTap: () async {
-                                  if (local != null) {
-                                    _openLocalTrack(local, showMap: true);
-                                    return;
-                                  }
-                                  if (cloud != null) {
-                                    await _openCloudTrackEnsuringLocal(cloud);
-                                  }
-                                },
+
+                              // ── Main content (taps → map) ──────────────
+                              InkWell(
+                                onTap: onCardTap,
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                        children: [
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                SizedBox(
+                                                  height: 52,
+                                                  child: Text(
+                                                    title,
+                                                    style: const TextStyle(
+                                                      fontSize: 18,
+                                                      fontWeight: FontWeight.w500,
+                                                      letterSpacing: -0.2,
+                                                      color: Colors.white,
+                                                    ),
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  when,
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.white70,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(width: 14),
+                                          _trackTypeIconWidget(
+                                            context,
+                                            localType ?? 'unknown',
+                                            size: 28,
+                                            color: Colors.white,
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: InkWell(
-                                onTap: () => _toggleExpanded(key),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                              const Divider(height: 1, color: Colors.white24),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
                                   children: [
-                                    Row(
-                                      children: [
-                                        typeIcon,
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                          child: Text(
-                                            title,
-                                            style: const TextStyle(fontWeight: FontWeight.bold),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
+                                    Icon(statusIcon,
+                                        size: 13,
+                                        color: Colors.white70),
+                                    const SizedBox(width: 4),
                                     Text(
-                                      l10n.tracksSummaryLine(when, distanceText, durationText, pointsText),
-                                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Icon(statusIcon, size: 14, color: statusColor ?? Colors.grey.shade700),
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                          child: Text(
-                                            (cloudId != null && _cloudDownloadErrors.containsKey(cloudId))
-                                                ? '$statusText • ${_cloudDownloadErrors[cloudId]!}'
-                                                : statusText,
-                                            style: TextStyle(fontSize: 12, color: statusColor ?? Colors.grey.shade700),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
+                                      (cloudId != null &&
+                                              _cloudDownloadErrors
+                                                  .containsKey(cloudId))
+                                          ? '$statusText · ${_cloudDownloadErrors[cloudId]!}'
+                                          : statusText,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.white70,
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
 
-                      // Buttons row
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                        child: Row(
-                          children: [
-                            const Spacer(),
-                            if (cloudId != null && _deletingCloudTrackIds.contains(cloudId))
-                              const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            else if (cloudId != null && _downloadingCloudTrackIds.contains(cloudId))
-                              const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            else if (cloudId != null && _cloudDownloadErrors.containsKey(cloudId) && cloud != null)
-                              IconButton(
-                                tooltip: 'Retry download',
-                                onPressed: () async {
-                                  await _openCloudTrackEnsuringLocal(cloud);
-                                },
-                                icon: const Icon(Icons.refresh),
-                              ),
-
-                            if (cloudId != null && cloud != null) ...[
-                              if ((_cloudStatus(cloud) == 'pending' || _cloudStatus(cloud) == 'processing'))
-                                IconButton(
-                                  tooltip: 'Delete from cloud',
-                                  onPressed: _deletingCloudTrackIds.contains(cloudId)
-                                      ? null
-                                      : () async {
-                                          await _confirmDeletePendingCloudTrack(
-                                            cloudTrackId: cloudId,
-                                            title: title,
-                                            linkedLocal: local,
-                                          );
-                                        },
-                                  icon: const Icon(Icons.delete_outline),
-                                ),
-                            ],
-
-                            if (local != null) ...[
-                              if (isSyncingLocal)
-                                const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              else
-                                IconButton(
-                                  tooltip: (local.cloudTrackId != null || local.synced)
-                                      ? 'Already uploaded'
-                                      : 'Sync to cloud',
-                                  onPressed: canSync ? () => _syncLocalTrack(local) : null,
-                                  icon: Icon(local.synced ? Icons.cloud_done : Icons.cloud_upload),
-                                ),
-                              IconButton(
-                                tooltip: 'Export JSON',
-                                onPressed: isSyncingLocal ? null : () => _exportLocalTrackJson(local),
-                                icon: const Icon(Icons.share),
-                              ),
-                              IconButton(
-                                tooltip: 'Delete',
-                                onPressed: isSyncingLocal ? null : () => _confirmDeleteLocalTrack(local),
-                                icon: const Icon(Icons.delete_outline),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      if (expanded)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              description.trim().isNotEmpty ? description.trim() : 'No description.',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade700,
-                              ),
-                            ),
-                          ),
-                        ),
                     ],
                   ),
                 );
@@ -1997,11 +2051,13 @@ class TrackDetailPage extends StatefulWidget {
 class LocalTrackDetailPage extends StatefulWidget {
   final LocalTrackFile track;
   final bool initialShowMap;
+  final VoidCallback? onDelete;
 
   const LocalTrackDetailPage({
     super.key,
     required this.track,
     this.initialShowMap = false,
+    this.onDelete,
   });
 
   @override
@@ -2053,7 +2109,7 @@ class _LocalTrackDetailPageState extends State<LocalTrackDetailPage> {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.white.withOpacity(0.7),
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -2062,11 +2118,7 @@ class _LocalTrackDetailPageState extends State<LocalTrackDetailPage> {
         actions: [
           IconButton(
             tooltip: _showMap ? 'Hide map' : 'Show map',
-            onPressed: () {
-              setState(() {
-                _showMap = !_showMap;
-              });
-            },
+            onPressed: () => setState(() => _showMap = !_showMap),
             icon: Icon(_showMap ? Icons.map_outlined : Icons.map),
           ),
         ],
@@ -2131,9 +2183,11 @@ class _LocalTrackDetailPageState extends State<LocalTrackDetailPage> {
                       ? (trackType == 'light'
                           ? LightTrackMap(
                               points: points.whereType<LightTrackPoint>().toList(growable: false),
+                              onDelete: widget.onDelete,
                             )
                           : RadiationTrackMap(
                               points: points.whereType<RadiationTrackPoint>().toList(growable: false),
+                              onDelete: widget.onDelete,
                             ))
                       : Center(
                           child: Text(
@@ -2248,9 +2302,13 @@ class _TrackDetailPageState extends State<TrackDetailPage> {
 
   Future<void> _downloadCloudToLocal(int cloudId) async {
     final trackTypeRaw = widget.track['trackType'] ?? widget.track['track_type'] ?? widget.track['type'] ?? widget.track['kind'];
-    final trackType = trackTypeRaw?.toString().trim().toLowerCase();
+    var trackType = trackTypeRaw?.toString().trim().toLowerCase();
+    print('_downloadCloudToLocal - trackTypeRaw: $trackTypeRaw, trackType: $trackType');
+    
+    // Fallback a 'radiation' si no es válido
     if (trackType != 'radiation' && trackType != 'light') {
-      throw Exception('Cloud track missing/invalid trackType');
+      print('⚠️ trackType inválido o nulo, usando fallback: radiation');
+      trackType = 'radiation';
     }
 
     List<Map<String, dynamic>> normalizePointsFromMaps(List<Map<String, dynamic>> items) {
@@ -2492,7 +2550,7 @@ class _TrackDetailPageState extends State<TrackDetailPage> {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.white.withOpacity(0.7),
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
                 fontWeight: FontWeight.w500,
               ),
             ),

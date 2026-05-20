@@ -78,7 +78,7 @@ class AboutPage extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.white.withOpacity(0.7),
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -149,7 +149,7 @@ class AboutPage extends StatelessWidget {
           ),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.send, color: Colors.lightBlueAccent),
+              leading: const Icon(Icons.send_rounded, color: Color(0xFF29B6F6)),
               title: Text(l10n.aboutCommunityTelegram),
               subtitle: Text(Config.telegramCommunityUrl),
               trailing: const Icon(Icons.open_in_new),
@@ -160,9 +160,9 @@ class AboutPage extends StatelessWidget {
           Center(
             child: Text(
               l10n.aboutDevelopedBy,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
-                color: Colors.white54,
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38),
               ),
             ),
           ),

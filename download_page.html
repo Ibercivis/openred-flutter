@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Open-red – Download</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 2.5rem 3rem;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+    }
+    .logo {
+      width: 80px;
+      height: 80px;
+      border-radius: 16px;
+      margin-bottom: 1.25rem;
+    }
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #f0f6fc;
+    }
+    .version-badge {
+      display: inline-block;
+      margin: 0.5rem 0 1.5rem;
+      background: #1f6feb;
+      color: #fff;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      letter-spacing: 0.03em;
+    }
+    .changelog {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 2rem;
+      text-align: left;
+    }
+    .changelog h2 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #8b949e;
+      margin-bottom: 0.75rem;
+    }
+    .changelog ul {
+      list-style: none;
+      padding: 0;
+    }
+    .changelog li {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      font-size: 0.95rem;
+      color: #c9d1d9;
+      line-height: 1.5;
+    }
+    .changelog li::before {
+      content: "✓";
+      color: #3fb950;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .download-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: #238636;
+      color: #fff;
+      text-decoration: none;
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 0.75rem 2rem;
+      border-radius: 8px;
+      transition: background 0.2s;
+    }
+    .download-btn:hover { background: #2ea043; }
+    .download-btn svg { width: 18px; height: 18px; fill: currentColor; }
+    .note {
+      margin-top: 1rem;
+      font-size: 0.78rem;
+      color: #8b949e;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img class="logo" src="icons/Icon-192.png" alt="Open-red logo" onerror="this.style.display='none'" />
+    <h1>Open-red</h1>
+    <span class="version-badge">v1.0.1</span>
+
+    <div class="changelog">
+      <h2>What's new in 1.0.1</h2>
+      <ul>
+        <li>Corrected GPS fix for Android &gt; 11</li>
+      </ul>
+    </div>
+
+    <a class="download-btn" href="open-red.apk" download>
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 16l-5-5 1.41-1.41L11 13.17V4h2v9.17l2.59-2.58L17 11l-5 5zm-7 4h14v-2H5v2z"/>
+      </svg>
+      Download APK (Android)
+    </a>
+    <p class="note">Requires Android 5.0 or higher</p>
+  </div>
+</body>
+</html>

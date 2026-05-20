@@ -583,9 +583,11 @@ class RadiaCodeData {
   });
   
   // Valor normalizado a CPS
+  // Device always reports in CPS, so no conversion needed.
   double? get cps {
     if (countRate == null) return null;
-    return countRateUnits == CountRateUnits.cpm ? (countRate! / 60.0) : countRate;
+    // return countRateUnits == CountRateUnits.cpm ? (countRate! / 60.0) : countRate;
+    return countRate;
   }
 
   double? get cpsErr {
@@ -606,10 +608,10 @@ class RadiaCodeData {
     return countRateErr! / 100.0;
   }
 
-  // Conversión a µSv/h (como el ejemplo Arduino)
-  // En la práctica (según tus valores), el stream parece venir ya en:
-  // - ROENTGEN: µR/h  -> µSv/h ≈ µR/h * 0.01
-  // - SIEVERT:  µSv/h -> µSv/h = valor
+  // Conversión a µSv/h
+  // El stream entrega el valor raw en unidades base:
+  // - ROENTGEN: R/h  -> µSv/h = × 1e4
+  // - SIEVERT:  Sv/h -> µSv/h = × 1e6
   double? get doseMicroSvPerHour {
     if (doseRate == null) return null;
 
@@ -623,29 +625,15 @@ class RadiaCodeData {
   }
 
   double _doseToMicroSvPerHour(double v, double? cpsNow) {
-    // Observación empírica (tu caso): el valor que entrega el stream suele venir ya en:
-    // - ROENTGEN: µR/h  -> µSv/h ≈ µR/h * 0.01
-    // - SIEVERT:  µSv/h -> µSv/h = valor
-    // Pero algunos firmwares no respetan flags; mantenemos heurística original.
-    if (v < 0.001) {
-      final isBackgroundLike = cpsNow != null && cpsNow.isFinite && cpsNow < 50.0;
-      final isTiny = v < 1e-4;
-      return (isBackgroundLike && isTiny) ? (v * 1e4) : (v * 1e6);
-    }
-    if (v >= 0.5) return v * 0.01; // µR/h -> µSv/h
-    return v; // ya en µSv/h
+    // El raw del DATA_BUF siempre viene en la misma unidad base (R/h),
+    // independientemente del flag measurementUnits (que solo afecta la
+    // pantalla del dispositivo). Conversión idéntica a Arduino Basic.ino:
+    //   doseRate * 10000.0f  →  µSv/h
+    return v * 1e4;
   }
 
   String get rawDoseUnit {
-    if (doseRate == null) {
-      return measurementUnits == MeasurementUnits.sievert ? 'µSv/h' : 'µR/h';
-    }
-
-    final v = doseRate!;
-
-    if (v < 0.001) return 'Sv/h';
-    if (v >= 0.5) return 'µR/h';
-    return 'µSv/h';
+    return measurementUnits == MeasurementUnits.sievert ? 'Sv/h' : 'R/h';
   }
 }
 

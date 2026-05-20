@@ -10,6 +10,7 @@ import '../../api_service.dart';
 import '../../config.dart';
 import '../../dose_color.dart';
 import '../../l10n/app_localizations.dart';
+import '../../marna_layer.dart';
 import '../../devices/core/device_session.dart';
 
 enum _MapLayer {
@@ -69,6 +70,8 @@ class _MapPageState extends State<MapPage> {
 
   late _MapLayer _layer;
   bool _layerPinnedByUser = false;
+
+  bool _marnaEnabled = false;
 
   final Map<String, _HexFeature> _hexByAnnotationId = {};
   _HexFeature? _selectedHex;
@@ -705,6 +708,9 @@ class _MapPageState extends State<MapPage> {
                   _mapboxMap = mapboxMap;
                   _hexPolygonManager =
                       await mapboxMap.annotations.createPolygonAnnotationManager();
+                  unawaited(MarnaLayer.ensureAdded(mapboxMap).then((_) {
+                    if (_marnaEnabled) MarnaLayer.setVisible(mapboxMap, visible: true);
+                  }));
                   unawaited(_maybeRefetchHexes(reason: 'created'));
                 },
                 onMapIdleListener: (_) {
@@ -769,6 +775,20 @@ class _MapPageState extends State<MapPage> {
                     ),
                   ),
                 ),
+              Positioned(
+                right: 12,
+                bottom: 12,
+                child: MarnaLayerToggle(
+                  enabled: _marnaEnabled,
+                  onToggle: () {
+                    setState(() => _marnaEnabled = !_marnaEnabled);
+                    final map = _mapboxMap;
+                    if (map != null) {
+                      unawaited(MarnaLayer.setVisible(map, visible: _marnaEnabled));
+                    }
+                  },
+                ),
+              ),
             ],
           );
         },

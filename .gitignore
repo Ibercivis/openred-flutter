@@ -46,3 +46,10 @@ app.*.map.json
 
 # Configuration files with sensitive data
 lib/config.dart
+
+# Release signing files - NEVER COMMIT THESE
+android/key.properties
+android/app/*.jks
+android/app/*.keystore
+*.jks
+*.keystore

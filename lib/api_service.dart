@@ -92,15 +92,20 @@ class ApiService {
           'Content-Type': 'application/json',
           'Authorization': authorizationHeader,
         },
-      );
+      ).timeout(const Duration(seconds: 15));
     }
 
-    // Prefer Bearer auth (matches the curl example)
-    var response = await doGet('Bearer $token');
-    if (response.statusCode == 401 || response.statusCode == 403) {
-      response = await doGet('Token $token');
+    try {
+      // Prefer Bearer auth (matches the curl example)
+      var response = await doGet('Bearer $token');
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        response = await doGet('Token $token');
+      }
+      return response;
+    } catch (e) {
+      // Si hay timeout u otro error de red, lanzar para que el caller lo maneje
+      rethrow;
     }
-    return response;
   }
 
   Future<http.Response> _authorizedDelete(Uri uri, {required String token}) async {
@@ -111,7 +116,7 @@ class ApiService {
           'Content-Type': 'application/json',
           'Authorization': authorizationHeader,
         },
-      );
+      ).timeout(const Duration(seconds: 15));
     }
 
     // Prefer Bearer auth (matches the curl example)
@@ -219,7 +224,7 @@ class ApiService {
           'email': email,
           'password': password,
         }),
-      );
+      ).timeout(const Duration(seconds: 15));
       
       final data = jsonDecode(response.body);
       
@@ -268,7 +273,7 @@ class ApiService {
         Uri.parse('$authBaseUrl/dj-rest-auth/google/'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'access_token': accessToken}),
-      );
+      ).timeout(const Duration(seconds: 15));
 
       final data = jsonDecode(response.body);
 
@@ -341,15 +346,25 @@ class ApiService {
           'password1': password,
           'password2': password,
         }),
-      );
+      ).timeout(const Duration(seconds: 15));
       
       final data = jsonDecode(response.body);
       
+      print('Register response status: ${response.statusCode}');
+      print('Register response body: $data');
+      
       if (response.statusCode == 201 || response.statusCode == 200) {
-        final token = data['key'] ?? data['token'];
+        final token = data['key'] ?? data['token'] ?? data['access_token'];
         if (token != null) {
           await saveToken(token);
           return {'success': true, 'token': token, 'user': data['user']};
+        } else {
+          // Success but no token - might need verification
+          return {
+            'success': true,
+            'message': data['detail'] ?? 'Registration successful',
+            'user': data['user']
+          };
         }
       }
       
@@ -481,26 +496,31 @@ class ApiService {
           initialUri: Uri.parse('$baseUrl/tracks/'),
           token: token,
         );
-        return {
-          'success': true,
-          'tracks': items,
-        };
-      } catch (_) {
+        return {'success': true, 'tracks': items};
+      } catch (e) {
+        // Don't retry on auth errors — my_tracks/ will fail the same way.
+        if (_isAuthError(e)) rethrow;
         final items = await _fetchAllPages(
           initialUri: Uri.parse('$baseUrl/tracks/my_tracks/'),
           token: token,
         );
-        return {
-          'success': true,
-          'tracks': items,
-        };
+        return {'success': true, 'tracks': items};
       }
     } catch (e) {
-      return {
-        'success': false,
-        'message': 'Network error: $e'
-      };
+      if (_isAuthError(e)) {
+        return {'success': false, 'message': 'Unauthorized'};
+      }
+      return {'success': false, 'message': 'Network error: $e'};
     }
+  }
+
+  static bool _isAuthError(Object e) {
+    final msg = e.toString().toLowerCase();
+    return msg.contains('401') ||
+        msg.contains('unauthorized') ||
+        msg.contains('authentication credentials') ||
+        msg.contains('not authenticated') ||
+        msg.contains('invalid token');
   }
 
   Future<Map<String, dynamic>> deleteTrack(int trackId) async {
@@ -661,6 +681,34 @@ class ApiService {
     }
   }
 
+  /// Downloads the raw JSON file for a light track from the given [fileUrl].
+  /// Returns the decoded list of measurement maps on success.
+  Future<Map<String, dynamic>> getLightTrackFile(String fileUrl) async {
+    final token = await getToken();
+    if (token == null) {
+      return {'success': false, 'message': 'Not authenticated'};
+    }
+    try {
+      final response = await _authorizedGet(Uri.parse(fileUrl), token: token);
+      if (response.statusCode != 200) {
+        return {'success': false, 'message': 'HTTP ${response.statusCode}'};
+      }
+      final decoded = jsonDecode(response.body);
+      final List<dynamic> items;
+      if (decoded is List) {
+        items = decoded;
+      } else if (decoded is Map) {
+        final results = decoded['results'] ?? decoded['measurements'] ?? decoded['points'];
+        items = results is List ? results : [];
+      } else {
+        items = [];
+      }
+      return {'success': true, 'measurements': items};
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
+
   /// Backend data source for H3 aggregation.
   ///
   /// - [H3AggregationSource.radiation] uses `/api/radiation-measurements/h3-aggregation-vertex/`
@@ -732,7 +780,7 @@ class ApiService {
           headers: {
             'Content-Type': 'application/json',
           },
-        );
+        ).timeout(const Duration(seconds: 15));
       }
 
       if (response.statusCode == 200) {
@@ -798,7 +846,7 @@ class ApiService {
           'Authorization': 'Token $token',
         },
         body: jsonEncode(body),
-      );
+      ).timeout(const Duration(seconds: 15));
 
       final data = jsonDecode(response.body);
       if (response.statusCode == 201 || response.statusCode == 200) {
@@ -850,7 +898,7 @@ class ApiService {
           'Authorization': 'Token $token',
         },
         body: jsonEncode(payload),
-      );
+      ).timeout(const Duration(seconds: 15));
 
       final data = jsonDecode(response.body);
       if (response.statusCode == 201 || response.statusCode == 200) {
@@ -897,7 +945,7 @@ class ApiService {
           'Authorization': authorizationHeader,
         },
         body: jsonEncode(trackJson),
-      );
+      ).timeout(const Duration(seconds: 15));
     }
 
     Map<String, dynamic> decodeBody(String body) {

@@ -36,12 +36,30 @@ class OppleLm3DeviceDefinition extends DeviceDefinition {
       result.advertisementData.localName,
     ];
 
-    for (final raw in candidates) {
-      final normalized = _normalizeNameForMatch(raw);
-      if (normalized.isEmpty) continue;
-      if (normalized.contains('lmaster')) return true;
+    if (kDebugMode) {
+      debugPrint('OppleLM3 DeviceDefinition: Checking device match');
+      debugPrint('  platformName: "${result.device.platformName}"');
+      debugPrint('  advName: "${result.advertisementData.advName}"');
+      debugPrint('  localName: "${result.advertisementData.localName}"');
     }
 
+    for (final raw in candidates) {
+      final normalized = _normalizeNameForMatch(raw);
+      if (kDebugMode) {
+        debugPrint('  Normalized "$raw" -> "$normalized"');
+      }
+      if (normalized.isEmpty) continue;
+      if (normalized.contains('lmaster')) {
+        if (kDebugMode) {
+          debugPrint('  MATCH! Contains "lmaster"');
+        }
+        return true;
+      }
+    }
+
+    if (kDebugMode) {
+      debugPrint('  NO MATCH');
+    }
     return false;
   }
 
